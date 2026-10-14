@@ -30,7 +30,13 @@ export const authOptions: NextAuthOptions = {
           include: {
             userRoles: {
               include: {
-                role: true,
+                role: {
+                  include: {
+                    permissions: {
+                      include: { permission: true },
+                    },
+                  },
+                },
               },
             },
           },
@@ -41,12 +47,24 @@ export const authOptions: NextAuthOptions = {
         const valid = await bcrypt.compare(password, user.passwordHash);
         if (!valid) return null;
 
-        const primaryRole = user.userRoles[0]?.role?.name ?? null;
+        const roles = user.userRoles.map((userRole) => userRole.role.name);
+        const permissions = [
+          ...new Set(
+            user.userRoles.flatMap((userRole) =>
+              userRole.role.permissions.map((rp) => rp.permission.code),
+            ),
+          ),
+        ];
 
         return {
           id: String(user.id),
-          name: user.firstname && user.lastname ? `${user.firstname} ${user.lastname}` : user.username,
-          role: primaryRole,
+          name:
+            user.firstname && user.lastname
+              ? `${user.firstname} ${user.lastname}`
+              : user.username,
+          role: roles[0] ?? null,
+          roles,
+          permissions,
         };
       },
     }),
@@ -56,6 +74,8 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.uid = user.id;
         token.role = user.role ?? null;
+        token.roles = user.roles ?? [];
+        token.permissions = user.permissions ?? [];
       }
       return token;
     },
@@ -63,6 +83,8 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.id = token.uid ?? "";
         session.user.role = token.role ?? null;
+        session.user.roles = token.roles ?? [];
+        session.user.permissions = token.permissions ?? [];
       }
       return session;
     },

@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { signIn } from "next-auth/react";
 import Link from "next/link";
+import { dashboardPathFor } from "@/lib/permissions";
+import { signInWithCredentials } from "@/lib/auth-client";
 
 export default function LoginForm() {
   const router = useRouter();
@@ -32,21 +33,25 @@ export default function LoginForm() {
     try {
       setIsLoading(true);
 
-      const res = await signIn("credentials", {
-        username: trimmedIdentifier,
+      const { ok, session } = await signInWithCredentials(
+        trimmedIdentifier,
         password,
-        redirect: false,
         callbackUrl,
-      });
+      );
 
-      if (res?.error) {
+      if (!ok) {
         setErrorMessage("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง");
         setIsLoading(false);
         return;
       }
 
-      // เข้าสู่ระบบสำเร็จ
-      router.push(res?.url || callbackUrl);
+      // เข้าสู่ระบบสำเร็จ — พาไปยัง dashboard ตามบทบาท
+      const target =
+        callbackUrl && callbackUrl !== "/"
+          ? callbackUrl
+          : dashboardPathFor(session?.user ?? null);
+
+      router.push(target);
       router.refresh();
     } catch {
       setErrorMessage("เกิดข้อผิดพลาดในการเชื่อมต่อ กรุณาลองใหม่อีกครั้ง");
