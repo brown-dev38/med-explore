@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/dal";
-import { PERMISSIONS } from "@/lib/permissions";
+import { hasRole, PERMISSIONS, ROLES } from "@/lib/permissions";
 import { toActivityDto } from "@/lib/activities";
 import type { ActivityListItem } from "@/types/activity";
 import { ActivitiesManager } from "@/components/activities-manager";
@@ -19,7 +19,7 @@ export default function OrganizerActivitiesPage() {
 }
 
 async function OrganizerActivitiesContent() {
-  await requirePermission(PERMISSIONS.ACTIVITY_MANAGE);
+  const user = await requirePermission(PERMISSIONS.ACTIVITY_MANAGE);
 
   const activities = await prisma.activity.findMany({
     orderBy: { startsAt: "desc" },
@@ -45,6 +45,7 @@ async function OrganizerActivitiesContent() {
       <ActivitiesManager
         initial={initial}
         detailBasePath="/organizer/activities"
+        canDeleteAll={hasRole(user, ROLES.ADMIN)}
       />
     </div>
   );

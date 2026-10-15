@@ -13,6 +13,7 @@ export type UserDto = {
 export type UserListResult = {
   items: UserDto[];
   total: number;
+  activeAdminCount: number;
   page: number;
   pageSize: number;
   totalPages: number;

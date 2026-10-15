@@ -6,7 +6,7 @@ import type { ActivityListItem } from "@/types/activity";
 import { ActivitiesBrowser } from "@/components/activities-browser";
 
 export const metadata = {
-  title: "กิจกรรมทั้งหมด | MedExplore Star",
+  title: "เช็คอิน / เช็คเอาท์กิจกรรม | MedExplore Star",
 };
 
 export default function DashboardActivitiesPage() {

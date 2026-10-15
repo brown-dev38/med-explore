@@ -55,6 +55,8 @@ export type ParticipationDto = {
   status: ParticipationStatus;
   eligibilityStatus: ReviewStatus;
   attendedMinutes: number | null;
+  yellowStarPoints: number;
+  reviewNote: string | null;
   createdAt: string;
   attendance: AttendanceRecordDto[];
 };
@@ -68,3 +70,38 @@ export type QrSessionDto = {
   scanUrl: string;
   qrDataUrl: string;
 };
+
+export type HelperStatus = "ASSIGNED" | "COMPLETED" | "CANCELLED";
+export type StarType = "YELLOW" | "GREEN" | "ADJUSTMENT";
+export type TransactionStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export type HelperAssignmentDto = {
+  id: string;
+  activityId: string;
+  userId: string;
+  userName: string;
+  studentCode: string | null;
+  email: string;
+  assignedBy: string;
+  status: HelperStatus;
+  description: string | null;
+  completedAt: string | null;
+  greenStarAwarded: boolean;
+  greenStarPoints: number;
+  createdAt: string;
+};
+
+export type StudentStarSummaryDto = {
+  yellowStars: number;
+  greenStars: number;
+  totalStars: number;
+  academicYearCode: string | null;
+  targetTier: {
+    name: string;
+    targetStars: number;
+    remaining: number;
+  } | null;
+  activitiesCount: number;
+  helpersCount: number;
+};
+

@@ -11,7 +11,7 @@ export async function DashboardUser() {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-indigo-600 to-sky-500 text-sm font-semibold text-white">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-sm font-semibold text-primary">
           {initial}
         </span>
         <div className="min-w-0">

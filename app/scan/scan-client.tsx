@@ -3,7 +3,29 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import {
+  Camera,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  ArrowRight,
+  Sparkles,
+  QrCode,
+  Loader2,
+} from "lucide-react";
 import { QrScanner } from "@/components/qr-scanner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 type ScanState = {
   status: "loading" | "ok" | "info" | "error" | "unregistered";
@@ -17,11 +39,8 @@ type ScanResponse = {
   message?: string;
   code?: string;
   activity?: { id: string; title: string; status: string } | null;
-  data?: { eventType?: string };
+  data?: { eventType?: string; evaluation?: { attendedMinutes: number | null; yellowStarPoints: number; message: string } };
 };
-
-const inputClass =
-  "w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-slate-100";
 
 function extractToken(raw: string): string {
   const match = raw.match(/[?&]token=([^&\s]+)/);
@@ -31,9 +50,10 @@ function extractToken(raw: string): string {
 function scanStateFrom(res: Response, json: ScanResponse): ScanState {
   if (res.ok) {
     const eventType = json.data?.eventType;
+    const evaluation = json.data?.evaluation;
     return {
       status: "ok",
-      message: `บันทึก${eventType === "CHECK_IN" ? "เช็คอิน" : "เช็คเอาท์"}สำเร็จ`,
+      message: `บันทึก${eventType === "CHECK_IN" ? "เช็คอิน" : "เช็คเอาท์"}สำเร็จ${evaluation?.attendedMinutes !== null && evaluation?.attendedMinutes !== undefined ? ` · เข้าร่วม ${evaluation.attendedMinutes} นาที · ${evaluation.message}` : ""}`,
     };
   }
   if (res.status === 409) {
@@ -143,119 +163,171 @@ export function ScanClient() {
     }
   }
 
-  const tone =
-    state.status === "ok"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
-      : state.status === "error"
-        ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
-        : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300";
-
   return (
-    <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
-      <h1 className="text-xl font-bold text-slate-900 dark:text-white">
-        บันทึกการเข้างาน
-      </h1>
-
-      {!token ? (
-        <div className="mt-4 space-y-4 text-left">
-          {scanning ? (
-            <QrScanner onDetected={goToToken} onCancel={() => setScanning(false)} />
-          ) : (
-            <>
-              <div className={`rounded-xl border p-4 text-sm font-medium ${tone}`}>
-                สแกน QR จากหน้าจอผู้จัดเพื่อบันทึกเวลา
-              </div>
-              <button
-                type="button"
-                onClick={() => setScanning(true)}
-                className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-sky-600 px-4 py-2.5 text-sm font-medium text-white transition-all hover:from-indigo-500 hover:to-sky-500"
-              >
-                เปิดกล้องสแกน
-              </button>
-              <p className="text-center text-xs text-slate-400">
-                ต้องเปิดหน้าเว็บผ่าน HTTPS หรือ localhost
-              </p>
-              <div className="text-center text-xs text-slate-400">หรือ</div>
-              <form onSubmit={submitManual} className="space-y-2">
-                <input
-                  value={manualToken}
-                  onChange={(e) => setManualToken(e.target.value)}
-                  placeholder="วางรหัส QR หรือลิงก์"
-                  className={inputClass}
-                />
-                <button
-                  type="submit"
-                  className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 dark:border-neutral-700 dark:text-slate-200 dark:hover:bg-neutral-800"
-                >
-                  บันทึกเวลาด้วยรหัส
-                </button>
-              </form>
-            </>
-          )}
+    <Card className="w-full max-w-md shadow-lg">
+      <CardHeader className="text-center pb-2">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-2">
+          <QrCode className="h-6 w-6" />
         </div>
-      ) : (
-        <>
-          {state.status === "loading" && (
-            <p className="mt-4 text-sm text-slate-500">{state.message}</p>
-          )}
+        <CardTitle className="text-xl font-bold tracking-tight">
+          บันทึกการเข้างาน (QR Code)
+        </CardTitle>
+        <CardDescription className="text-xs">
+          สแกน QR Code จากหน้าจอผู้จัดเพื่อบันทึกเวลา เช็คอิน / เช็คเอาท์
+        </CardDescription>
+      </CardHeader>
 
-          {(state.status === "ok" ||
-            state.status === "info" ||
-            state.status === "error") && (
-            <div
-              className={`mt-4 rounded-xl border p-4 text-sm font-medium ${tone}`}
-            >
-              {state.message}
-            </div>
-          )}
-
-          {state.status === "unregistered" && (
-            <div className="mt-4 space-y-3 text-left">
-              <div
-                className={`rounded-xl border p-4 text-sm font-medium ${tone}`}
-              >
-                {state.message}
-              </div>
-              {state.activityTitle && (
-                <p className="text-sm text-slate-600 dark:text-slate-400">
-                  กิจกรรม:{" "}
-                  <span className="font-medium text-slate-900 dark:text-white">
-                    {state.activityTitle}
-                  </span>
-                </p>
-              )}
-              {state.canRegister ? (
-                <button
-                  type="button"
-                  onClick={registerAndCheckIn}
-                  className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-sky-600 px-4 py-2.5 text-sm font-medium text-white transition-all hover:from-indigo-500 hover:to-sky-500"
+      <CardContent className="space-y-4 pt-2">
+        {!token ? (
+          <div className="space-y-4">
+            {scanning ? (
+              <QrScanner
+                onDetected={goToToken}
+                onCancel={() => setScanning(false)}
+              />
+            ) : (
+              <>
+                <Button
+                  onClick={() => setScanning(true)}
+                  className="w-full gap-2 py-5 text-base"
                 >
-                  ลงทะเบียนกิจกรรมนี้แล้วเช็คอิน
-                </button>
-              ) : (
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  กิจกรรมนี้ยังไม่เปิดรับลงทะเบียน กรุณาติดต่อผู้จัด
+                  <Camera className="h-5 w-5" />
+                  เปิดกล้องสแกน QR Code
+                </Button>
+                <p className="text-center text-xs text-muted-foreground">
+                  * หมายเหตุ: การใช้กล้องต้องเปิดผ่าน HTTPS หรือ localhost
                 </p>
-              )}
-            </div>
-          )}
-        </>
-      )}
 
-      <div className="mt-6 flex justify-center gap-3">
-        <Link
-          href="/dashboard/activities"
-          className="inline-flex items-center rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 dark:border-neutral-700 dark:text-slate-200 dark:hover:bg-neutral-800"
-        >
-          กลับไปหน้ากิจกรรม
-        </Link>
-        <Link
-          href="/dashboard"
-          className="inline-flex items-center rounded-xl bg-gradient-to-r from-indigo-600 to-sky-600 px-4 py-2 text-sm font-medium text-white hover:from-indigo-500 hover:to-sky-500 transition-all"
-        >
-          แดชบอร์ด
-        </Link>
-      </div>
-    </div>
+                <div className="relative my-4">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">
+                      หรือกรอกรหัสด้วยตนเอง
+                    </span>
+                  </div>
+                </div>
+
+                <form onSubmit={submitManual} className="space-y-2.5">
+                  <Label htmlFor="manual-token">รหัสหรือลิงก์สำหรับสแกน</Label>
+                  <Input
+                    id="manual-token"
+                    value={manualToken}
+                    onChange={(e) => setManualToken(e.target.value)}
+                    placeholder="วางรหัส Token หรือ URL ลิงก์ที่นี่..."
+                  />
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    className="w-full"
+                    disabled={!manualToken.trim()}
+                  >
+                    บันทึกเวลาด้วยรหัส
+                  </Button>
+                </form>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {state.status === "loading" && (
+              <div className="flex flex-col items-center justify-center py-6 text-center">
+                <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
+                <p className="text-sm font-medium text-foreground">
+                  {state.message}
+                </p>
+              </div>
+            )}
+
+            {state.status === "ok" && (
+              <Alert className="border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                <AlertTitle className="font-semibold">สำเร็จ!</AlertTitle>
+                <AlertDescription className="text-xs">
+                  {state.message}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {state.status === "info" && (
+              <Alert className="border-sky-500/30 bg-sky-500/10 text-sky-800 dark:text-sky-200">
+                <Clock className="h-4 w-4 text-sky-600" />
+                <AlertTitle className="font-semibold">ข้อมูลการเข้างาน</AlertTitle>
+                <AlertDescription className="text-xs">
+                  {state.message}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {state.status === "error" && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle className="font-semibold">ไม่สามารถบันทึกเวลาได้</AlertTitle>
+                <AlertDescription className="text-xs">
+                  {state.message}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {state.status === "unregistered" && (
+              <div className="space-y-3">
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle className="font-semibold">ยังไม่ได้ลงทะเบียน</AlertTitle>
+                  <AlertDescription className="text-xs">
+                    {state.message}
+                  </AlertDescription>
+                </Alert>
+
+                {state.activityTitle && (
+                  <div className="rounded-lg border p-3 text-xs">
+                    <p className="text-muted-foreground">กิจกรรม:</p>
+                    <p className="text-sm font-semibold text-foreground mt-0.5">
+                      {state.activityTitle}
+                    </p>
+                  </div>
+                )}
+
+                {state.canRegister ? (
+                  <Button
+                    onClick={registerAndCheckIn}
+                    className="w-full gap-2 py-5"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    ลงทะเบียนกิจกรรมนี้แล้วเช็คอินทันที
+                  </Button>
+                ) : (
+                  <p className="text-center text-xs text-muted-foreground">
+                    กิจกรรมนี้ยังไม่เปิดรับลงทะเบียน กรุณาติดต่อผู้จัดงาน
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+
+      <CardFooter className="flex flex-wrap justify-center gap-2 border-t pt-4">
+        {token && state.status !== "loading" && (
+          <Button variant="outline" size="sm" render={<Link href="/scan" />}>สแกนอีกครั้ง</Button>
+        )}
+        <Button
+          variant="outline"
+          size="sm"
+          render={<Link href="/dashboard/activities">หน้ารวมกิจกรรม</Link>}
+        />
+        <Button
+          variant="default"
+          size="sm"
+          render={
+            <Link href="/dashboard" className="gap-1">
+              ไปที่แดชบอร์ด
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          }
+        />
+      </CardFooter>
+    </Card>
   );
 }

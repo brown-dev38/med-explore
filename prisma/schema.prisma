@@ -123,7 +123,7 @@ model Permission {
 }
 
 model UserRole {
-  userId BigInt @map("user_id")
+  userId BigInt @unique @map("user_id")
   roleId BigInt @map("role_id")
 
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)

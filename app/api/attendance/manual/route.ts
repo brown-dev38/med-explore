@@ -1,80 +1,31 @@
-import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/dal";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { attendanceManualSchema } from "@/lib/validation";
 import { errorResponse, parseId, successResponse } from "@/lib/api";
-import { recordAudit } from "@/lib/audit";
-import { hasEvent } from "@/lib/attendance";
+import { AttendanceError, recordAttendance } from "@/lib/attendance";
 import { toAttendanceDto } from "@/lib/participations";
 
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return errorResponse("กรุณาเข้าสู่ระบบ", 401);
-
-  const canManage = hasPermission(user, PERMISSIONS.ACTIVITY_MANAGE);
-  const canRecord = hasPermission(user, PERMISSIONS.ATTENDANCE_RECORD);
-  if (!canManage && !canRecord) {
+  if (!hasPermission(user, PERMISSIONS.ACTIVITY_MANAGE) && !hasPermission(user, PERMISSIONS.ATTENDANCE_RECORD)) {
     return errorResponse("ไม่มีสิทธิ์บันทึกเวลาแทน", 403);
   }
-
-  const body = await req.json().catch(() => null);
-  const parsed = attendanceManualSchema.safeParse(body);
-  if (!parsed.success) {
-    return errorResponse(
-      parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง",
-      400,
-    );
-  }
-
+  const parsed = attendanceManualSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return errorResponse(parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง", 400);
   const participationId = parseId(parsed.data.participationId);
   if (!participationId) return errorResponse("ไม่พบผู้เข้าร่วม", 404);
-
-  const participation = await prisma.participation.findUnique({
-    where: { id: participationId },
-  });
-  if (!participation) return errorResponse("ไม่พบผู้เข้าร่วม", 404);
-
-  const { eventType } = parsed.data;
-  if (eventType === "CHECK_OUT" && !(await hasEvent(participationId, "CHECK_IN"))) {
-    return errorResponse("ยังไม่พบการเช็คอิน ไม่สามารถบันทึกเช็คเอาท์ได้", 400);
+  try {
+    const result = await recordAttendance({
+      participationId, eventType: parsed.data.eventType, method: "ORGANIZER",
+      occurredAt: parsed.data.occurredAt ? new Date(parsed.data.occurredAt) : new Date(),
+      recordedBy: BigInt(user.id), replaceExisting: true,
+    });
+    return successResponse({ ...toAttendanceDto(result.record), evaluation: result.evaluation }, result.created ? 201 : 200);
+  } catch (error) {
+    if (error instanceof AttendanceError) return errorResponse(error.message, error.status);
+    if ((error as { code?: string }).code === "P2034") return errorResponse("มีการแก้ไขเวลาพร้อมกัน กรุณาลองใหม่", 409);
+    console.error("Manual attendance failed:", error);
+    return errorResponse("บันทึกเวลาและดาวไม่สำเร็จ กรุณาลองใหม่", 500);
   }
-
-  const occurredAt = parsed.data.occurredAt
-    ? new Date(parsed.data.occurredAt)
-    : new Date();
-
-  const existing = await prisma.attendanceRecord.findUnique({
-    where: {
-      participationId_eventType: { participationId, eventType },
-    },
-  });
-
-  const record = existing
-    ? await prisma.attendanceRecord.update({
-        where: { id: existing.id },
-        data: { occurredAt, recordedBy: BigInt(user.id) },
-      })
-    : await prisma.attendanceRecord.create({
-        data: {
-          participationId,
-          eventType,
-          method: "ORGANIZER",
-          occurredAt,
-          recordedBy: BigInt(user.id),
-        },
-      });
-
-  await recordAudit({
-    actorId: BigInt(user.id),
-    action: existing ? "attendance.update" : "attendance.record",
-    entityType: "AttendanceRecord",
-    entityId: record.id,
-    details: {
-      activityId: String(participation.activityId),
-      eventType,
-      method: "ORGANIZER",
-    },
-  });
-
-  return successResponse(toAttendanceDto(record), existing ? 200 : 201);
 }

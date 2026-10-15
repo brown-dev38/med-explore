@@ -1,93 +1,126 @@
 import { Suspense } from "react";
 import Link from "next/link";
+import {
+  Calendar,
+  MapPin,
+} from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/dal";
 import { formatThaiDateTime } from "@/lib/datetime";
+import { getStudentYearContext } from "@/lib/student-academic-years";
+import type { StudentYearPageProps } from "@/lib/student-activity-filters";
+import { StudentYearSelector } from "@/components/student-year-selector";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 export const metadata = {
   title: "กิจกรรมที่จะมาถึง | MedExplore Star",
 };
 
-export default function UpcomingActivitiesPage() {
+export default function UpcomingActivitiesPage({ searchParams }: StudentYearPageProps) {
   return (
-    <Suspense fallback={<div className="text-sm text-slate-500">กำลังโหลด...</div>}>
-      <UpcomingActivitiesContent />
+    <Suspense
+      fallback={
+        <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
+          กำลังโหลดข้อมูล...
+        </div>
+      }
+    >
+      <UpcomingActivitiesContent searchParams={searchParams} />
     </Suspense>
   );
 }
 
-async function UpcomingActivitiesContent() {
+async function UpcomingActivitiesContent({ searchParams }: StudentYearPageProps) {
   await requireAuth();
   const now = new Date();
+  const { years, selectedYear } = await getStudentYearContext(searchParams);
 
-  const activities = await prisma.activity.findMany({
+  const activities = selectedYear ? await prisma.activity.findMany({
     where: {
-      status: { in: ["DRAFT", "PUBLISHED"] },
-      endsAt: { gte: now },
+      academicYearId: BigInt(selectedYear.id),
+      status: "DRAFT",
+      endsAt: { gt: now },
     },
     orderBy: { startsAt: "asc" },
-  });
+  }) : [];
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">
           กิจกรรมที่จะมาถึงทั้งหมด
         </h1>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          กิจกรรมที่กำลังจะมาถึง (รวมฉบับร่างที่ยังไม่เปิดรับลงทะเบียน)
+        <p className="mt-1 text-sm text-muted-foreground">
+          {selectedYear ? `ปีการศึกษา ${selectedYear.code} · เฉพาะกิจกรรมฉบับร่างที่เตรียมเปิดให้เข้าร่วม` : "ยังไม่มีปีการศึกษา"}
         </p>
       </div>
 
+      <StudentYearSelector years={years} selectedId={selectedYear?.id ?? null} basePath="/dashboard/upcoming" />
+      <Button variant="outline" size="sm" render={<Link href={selectedYear ? `/dashboard?academicYearId=${selectedYear.id}` : "/dashboard"} />}>กลับหน้าภาพรวม</Button>
+
       {activities.length === 0 ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 dark:border-neutral-800 dark:bg-neutral-900 dark:text-slate-400">
-          ยังไม่มีกิจกรรมที่กำลังจะมาถึง
-        </div>
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center justify-center p-12 text-center">
+            <Calendar className="h-10 w-10 text-muted-foreground/60 mb-3" />
+            <p className="text-base font-semibold text-foreground">
+              ยังไม่มีกิจกรรมฉบับร่างที่กำลังจะมาถึงในปีที่เลือก
+            </p>
+            <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+              กิจกรรมฉบับร่างใหม่ของปีที่เลือกจะแสดงที่นี่
+            </p>
+          </CardContent>
+        </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
           {activities.map((activity) => (
-            <div
+            <Card
               key={String(activity.id)}
-              className="flex flex-col rounded-2xl border border-slate-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900"
+              className="flex flex-col justify-between transition-all hover:shadow-md"
             >
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  {activity.title}
-                </h2>
-                {activity.status === "DRAFT" ? (
-                  <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
+              <CardHeader className="p-5 pb-3">
+                <div className="flex items-start justify-between gap-3">
+                  <CardTitle className="text-lg font-bold tracking-tight text-foreground line-clamp-2">
+                    {activity.title}
+                  </CardTitle>
+                  <Badge variant="secondary" className="shrink-0 text-xs">
                     ฉบับร่าง
-                  </span>
-                ) : (
-                  <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
-                    เปิดรับลงทะเบียน
-                  </span>
-                )}
-              </div>
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                {formatThaiDateTime(activity.startsAt.toISOString())} →{" "}
-                {formatThaiDateTime(activity.endsAt.toISOString())}
-              </p>
-              {activity.location && (
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  สถานที่: {activity.location}
-                </p>
-              )}
-              <div className="mt-4">
-                {activity.status === "PUBLISHED" ? (
-                  <Link
-                    href="/dashboard/activities"
-                    className="inline-flex items-center rounded-xl bg-gradient-to-r from-indigo-600 to-sky-600 px-4 py-2 text-sm font-medium text-white transition-all hover:from-indigo-500 hover:to-sky-500"
-                  >
-                    ไปหน้าลงทะเบียน
-                  </Link>
-                ) : (
-                  <span className="inline-flex items-center rounded-xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-500 dark:bg-neutral-800 dark:text-slate-400">
-                    ยังไม่เปิดรับลงทะเบียน
-                  </span>
-                )}
-              </div>
-            </div>
+                  </Badge>
+                </div>
+
+                <div className="space-y-1.5 pt-2 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-1.5 font-medium text-foreground">
+                    <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                    {formatThaiDateTime(activity.startsAt.toISOString())}
+                  </div>
+                  <div className="pl-5">
+                    ถึง {formatThaiDateTime(activity.endsAt.toISOString())}
+                  </div>
+                  {activity.location && (
+                    <div className="flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+                      {activity.location}
+                    </div>
+                  )}
+                </div>
+              </CardHeader>
+
+              <CardFooter className="p-5 pt-0 border-t mt-3 flex justify-between items-center">
+                <span className="text-xs text-muted-foreground">
+                  เวลาขั้นต่ำ: {activity.minMinutes} นาที
+                </span>
+                <Badge variant="outline" className="text-xs font-normal">
+                  รอเปิดรับลงทะเบียน
+                </Badge>
+              </CardFooter>
+            </Card>
           ))}
         </div>
       )}

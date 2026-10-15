@@ -2,30 +2,63 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import {
+  Calendar,
+  Plus,
+  Pencil,
+  Trash2,
+  CheckCircle2,
+  Lock,
+  RotateCcw,
+} from "lucide-react";
 import type { AcademicYearDto, AcademicYearStatus } from "@/types/academic-year";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
-const STATUS_LABEL: Record<AcademicYearStatus, string> = {
-  DRAFT: "ฉบับร่าง",
-  ACTIVE: "ใช้งานอยู่",
-  CLOSED: "ปิดแล้ว",
+const STATUS_CONFIG: Record<
+  AcademicYearStatus,
+  { label: string; variant: "default" | "secondary" | "destructive" | "outline" }
+> = {
+  DRAFT: { label: "ฉบับร่าง", variant: "secondary" },
+  ACTIVE: { label: "ใช้งานอยู่", variant: "default" },
+  CLOSED: { label: "ปิดแล้ว", variant: "destructive" },
 };
 
-const STATUS_STYLE: Record<AcademicYearStatus, string> = {
-  DRAFT:
-    "bg-slate-100 text-slate-700 dark:bg-neutral-800 dark:text-slate-200",
-  ACTIVE:
-    "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300",
-  CLOSED: "bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300",
+type ConfirmActionState = {
+  open: boolean;
+  title: string;
+  description: string;
+  confirmText?: string;
+  variant?: "default" | "destructive";
+  action: () => Promise<boolean>;
 };
-
-const inputClass =
-  "w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-slate-100";
-
-const btnPrimary =
-  "inline-flex items-center rounded-xl bg-gradient-to-r from-indigo-600 to-sky-600 px-4 py-2 text-sm font-medium text-white transition-all hover:from-indigo-500 hover:to-sky-500 disabled:cursor-not-allowed disabled:opacity-60";
-
-const btnGhost =
-  "inline-flex items-center rounded-xl border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-slate-200 dark:hover:bg-neutral-800";
 
 export function AcademicYearManager({
   initialYears,
@@ -34,17 +67,28 @@ export function AcademicYearManager({
 }) {
   const router = useRouter();
   const [years, setYears] = useState(initialYears);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [form, setForm] = useState({ code: "", startsOn: "", endsOn: "" });
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingYear, setEditingYear] = useState<AcademicYearDto | null>(null);
   const [editForm, setEditForm] = useState({ code: "", startsOn: "", endsOn: "" });
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  const [confirmState, setConfirmState] = useState<ConfirmActionState>({
+    open: false,
+    title: "",
+    description: "",
+    action: async (): Promise<boolean> => false,
+  });
 
   async function reload() {
-    const res = await fetch("/api/academic-years");
-    if (res.ok) {
+    try {
+      const res = await fetch("/api/academic-years");
+      if (!res.ok) throw new Error("refresh failed");
       const json = await res.json();
       setYears(json.data);
+    } catch {
+      toast.warning("บันทึกแล้ว แต่โหลดรายการล่าสุดไม่สำเร็จ กรุณารีเฟรชหน้าจอ");
     }
   }
 
@@ -54,7 +98,6 @@ export function AcademicYearManager({
     body?: unknown,
   ): Promise<boolean> {
     setBusy(true);
-    setError(null);
     try {
       const res = await fetch(url, {
         method,
@@ -63,14 +106,14 @@ export function AcademicYearManager({
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(json.message ?? "เกิดข้อผิดพลาด กรุณาลองใหม่");
+        toast.error(json.message ?? "เกิดข้อผิดพลาด กรุณาลองใหม่");
         return false;
       }
       await reload();
       router.refresh();
       return true;
     } catch {
-      setError("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
+      toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
       return false;
     } finally {
       setBusy(false);
@@ -80,247 +123,389 @@ export function AcademicYearManager({
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!form.code.trim() || !form.startsOn || !form.endsOn) {
-      setError("กรุณากรอกรหัสและช่วงวันที่ให้ครบถ้วน");
+      toast.error("กรุณากรอกรหัสและช่วงวันที่ให้ครบถ้วน");
       return;
     }
     const ok = await request("/api/academic-years", "POST", form);
-    if (ok) setForm({ code: "", startsOn: "", endsOn: "" });
+    if (ok) {
+      toast.success(`เพิ่มปีการศึกษา ${form.code} เรียบร้อยแล้ว`);
+      setForm({ code: "", startsOn: "", endsOn: "" });
+      setCreateOpen(false);
+    }
   }
 
   function startEdit(year: AcademicYearDto) {
-    setError(null);
-    setEditingId(year.id);
+    setEditingYear(year);
     setEditForm({
       code: year.code,
       startsOn: year.startsOn,
       endsOn: year.endsOn,
     });
+    setEditOpen(true);
   }
 
-  async function saveEdit(id: string) {
-    const ok = await request(`/api/academic-years/${id}`, "PATCH", editForm);
-    if (ok) setEditingId(null);
+  async function handleSaveEdit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!editingYear) return;
+    const ok = await request(
+      `/api/academic-years/${editingYear.id}`,
+      "PATCH",
+      editForm,
+    );
+    if (ok) {
+      toast.success("บันทึกการแก้ไขปีการศึกษาแล้ว");
+      setEditOpen(false);
+      setEditingYear(null);
+    }
   }
 
-  const changeStatus = (id: string, status: AcademicYearStatus) =>
-    request(`/api/academic-years/${id}`, "PATCH", { status });
+  function promptActivate(year: AcademicYearDto) {
+    setConfirmState({
+      open: true,
+      title: `ยืนยันเปิดใช้งานปีการศึกษา ${year.code}`,
+      description:
+        "ระบบอนุญาตให้มีปีการศึกษาที่ใช้งานอยู่ได้เพียง 1 ปีเท่านั้น หากเปิดใช้งานปีนี้ ระบบจะทำการปิดปีการศึกษาที่ใช้งานอยู่เดิมโดยอัตโนมัติ คุณแน่ใจหรือไม่?",
+      confirmText: "เปิดใช้งานปีนี้",
+      variant: "default",
+      action: async () => {
+        const ok = await request(`/api/academic-years/${year.id}`, "PATCH", {
+          status: "ACTIVE",
+        });
+        if (ok) {
+          toast.success(`เปิดใช้งานปีการศึกษา ${year.code} แล้ว`);
+        }
+        return ok;
+      },
+    });
+  }
 
-  const remove = (id: string) =>
-    request(`/api/academic-years/${id}`, "DELETE");
+  function promptClose(year: AcademicYearDto) {
+    setConfirmState({
+      open: true,
+      title: `ยืนยันปิดปีการศึกษา ${year.code}`,
+      description:
+        "เมื่อปิดปีการศึกษาแล้ว จะไม่สามารถสร้างหรือแก้ไขกิจกรรมสำหรับปีนี้ได้ คุณต้องการปิดปีการศึกษานี้ใช่หรือไม่?",
+      confirmText: "ปิดปีการศึกษา",
+      variant: "destructive",
+      action: async () => {
+        const ok = await request(`/api/academic-years/${year.id}`, "PATCH", {
+          status: "CLOSED",
+        });
+        if (ok) {
+          toast.success(`ปิดปีการศึกษา ${year.code} แล้ว`);
+        }
+        return ok;
+      },
+    });
+  }
+
+  function promptReopen(year: AcademicYearDto) {
+    setConfirmState({
+      open: true,
+      title: `เปิดใหม่ปีการศึกษา ${year.code}`,
+      description:
+        "ปีการศึกษานี้จะกลับสู่สถานะ 'ฉบับร่าง (DRAFT)' คุณต้องการเปิดใหม่ใช่หรือไม่?",
+      confirmText: "เปิดใหม่",
+      variant: "default",
+      action: async () => {
+        const ok = await request(`/api/academic-years/${year.id}`, "PATCH", {
+          status: "DRAFT",
+        });
+        if (ok) {
+          toast.success(`เปลี่ยนสถานะเป็นฉบับร่างแล้ว`);
+        }
+        return ok;
+      },
+    });
+  }
+
+  function promptDelete(year: AcademicYearDto) {
+    setConfirmState({
+      open: true,
+      title: `ยืนยันการลบปีการศึกษา ${year.code}`,
+      description: `ลบปีการศึกษา ${year.code} ถาวร รวมกิจกรรม ผู้เข้าร่วม เวลาเข้า–ออก QR ดาว แบบประเมิน และข้อมูลรางวัล/การแลกรางวัลของปีนี้ ประวัติ Audit Log ยังคงอยู่ การลบไม่สามารถย้อนกลับได้${year.status === "ACTIVE" ? "\nปีนี้กำลังใช้งานอยู่ หลังลบต้องเปิดใช้งานปีอื่นด้วยตนเอง" : ""}\nยืนยันลบหรือไม่?`,
+      confirmText: "ลบข้อมูล",
+      variant: "destructive",
+      action: async () => {
+        const ok = await request(`/api/academic-years/${year.id}`, "DELETE");
+        if (ok) {
+          toast.success(`ลบปีการศึกษา ${year.code} แล้ว`);
+        }
+        return ok;
+      },
+    });
+  }
 
   return (
     <div className="space-y-6">
-      {error && (
-        <div
-          role="alert"
-          className="rounded-xl border border-red-200 bg-red-50 p-3.5 text-sm font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
-        >
-          {error}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            จัดการปีการศึกษา
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            สร้าง เปิดใช้งาน และปิดรอบปีการศึกษาสำหรับการสะสมดาวกิจกรรม
+          </p>
         </div>
-      )}
-
-      <form
-        onSubmit={handleCreate}
-        className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-white p-5 sm:grid-cols-4 dark:border-neutral-800 dark:bg-neutral-900"
-      >
-        <div className="space-y-1">
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
-            รหัสปีการศึกษา
-          </label>
-          <input
-            value={form.code}
-            onChange={(e) => setForm({ ...form, code: e.target.value })}
-            placeholder="เช่น 2569"
-            disabled={busy}
-            className={inputClass}
-          />
-        </div>
-        <div className="space-y-1">
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
-            วันเริ่มต้น
-          </label>
-          <input
-            type="date"
-            value={form.startsOn}
-            onChange={(e) => setForm({ ...form, startsOn: e.target.value })}
-            disabled={busy}
-            className={inputClass}
-          />
-        </div>
-        <div className="space-y-1">
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
-            วันสิ้นสุด
-          </label>
-          <input
-            type="date"
-            value={form.endsOn}
-            onChange={(e) => setForm({ ...form, endsOn: e.target.value })}
-            disabled={busy}
-            className={inputClass}
-          />
-        </div>
-        <div className="flex items-end">
-          <button type="submit" disabled={busy} className={`${btnPrimary} w-full justify-center`}>
-            เพิ่มปีการศึกษา
-          </button>
-        </div>
-      </form>
-
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-neutral-800/60 dark:text-slate-400">
-            <tr>
-              <th className="px-4 py-3 font-semibold">รหัส</th>
-              <th className="px-4 py-3 font-semibold">ช่วงวันที่</th>
-              <th className="px-4 py-3 font-semibold">สถานะ</th>
-              <th className="px-4 py-3 text-right font-semibold">การจัดการ</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-neutral-800">
-            {years.length === 0 && (
-              <tr>
-                <td
-                  colSpan={4}
-                  className="px-4 py-8 text-center text-slate-500 dark:text-slate-400"
-                >
-                  ยังไม่มีข้อมูลปีการศึกษา
-                </td>
-              </tr>
-            )}
-            {years.map((year) => {
-              const isEditing = editingId === year.id;
-              return (
-                <tr key={year.id} className="align-middle">
-                  <td className="px-4 py-3">
-                    {isEditing ? (
-                      <input
-                        value={editForm.code}
-                        onChange={(e) =>
-                          setEditForm({ ...editForm, code: e.target.value })
-                        }
-                        className={inputClass}
-                        disabled={busy}
-                      />
-                    ) : (
-                      <span className="font-medium text-slate-900 dark:text-white">
-                        {year.code}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                    {isEditing ? (
-                      <div className="flex gap-2">
-                        <input
-                          type="date"
-                          value={editForm.startsOn}
-                          onChange={(e) =>
-                            setEditForm({ ...editForm, startsOn: e.target.value })
-                          }
-                          className={inputClass}
-                          disabled={busy}
-                        />
-                        <input
-                          type="date"
-                          value={editForm.endsOn}
-                          onChange={(e) =>
-                            setEditForm({ ...editForm, endsOn: e.target.value })
-                          }
-                          className={inputClass}
-                          disabled={busy}
-                        />
-                      </div>
-                    ) : (
-                      `${year.startsOn} → ${year.endsOn}`
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_STYLE[year.status]}`}
-                    >
-                      {STATUS_LABEL[year.status]}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap justify-end gap-2">
-                      {isEditing ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => saveEdit(year.id)}
-                            disabled={busy}
-                            className={btnGhost}
-                          >
-                            บันทึก
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditingId(null)}
-                            disabled={busy}
-                            className={btnGhost}
-                          >
-                            ยกเลิก
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          {year.status === "DRAFT" && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => startEdit(year)}
-                                disabled={busy}
-                                className={btnGhost}
-                              >
-                                แก้ไข
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => changeStatus(year.id, "ACTIVE")}
-                                disabled={busy}
-                                className={btnGhost}
-                              >
-                                เปิดใช้งาน
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => remove(year.id)}
-                                disabled={busy}
-                                className="inline-flex items-center rounded-xl border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-60 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40"
-                              >
-                                ลบ
-                              </button>
-                            </>
-                          )}
-                          {year.status === "ACTIVE" && (
-                            <button
-                              type="button"
-                              onClick={() => changeStatus(year.id, "CLOSED")}
-                              disabled={busy}
-                              className={btnGhost}
-                            >
-                              ปิดปีการศึกษา
-                            </button>
-                          )}
-                          {year.status === "CLOSED" && (
-                            <button
-                              type="button"
-                              onClick={() => changeStatus(year.id, "DRAFT")}
-                              disabled={busy}
-                              className={btnGhost}
-                            >
-                              เปิดใหม่
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <Button onClick={() => setCreateOpen(true)} disabled={busy} className="gap-2">
+          <Plus className="h-4 w-4" />
+          เพิ่มปีการศึกษา
+        </Button>
       </div>
+
+      <Card>
+        <CardHeader className="p-4 pb-0">
+          <CardTitle className="text-base font-semibold">
+            รายการปีการศึกษาทั้งหมด ({years.length})
+          </CardTitle>
+          <CardDescription className="text-xs">
+            มีปีการศึกษาที่เปิดใช้งาน (ACTIVE) ได้ครั้งละ 1 ปีเท่านั้น
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-0 pt-3">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-32">รหัสปีการศึกษา</TableHead>
+                <TableHead>ช่วงวันที่</TableHead>
+                <TableHead className="w-32">สถานะ</TableHead>
+                <TableHead className="text-right">การจัดการ</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {years.length === 0 && (
+                <TableRow>
+                  <TableCell
+                    colSpan={4}
+                    className="h-28 text-center text-muted-foreground"
+                  >
+                    ยังไม่มีข้อมูลปีการศึกษา กรุณากดปุ่มเพิ่มปีการศึกษา
+                  </TableCell>
+                </TableRow>
+              )}
+              {years.map((year) => {
+                const statusInfo = STATUS_CONFIG[year.status];
+                return (
+                  <TableRow key={year.id}>
+                    <TableCell className="font-semibold text-foreground">
+                      {year.code}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      <span className="inline-flex items-center gap-1.5">
+                        <Calendar className="h-3.5 w-3.5" />
+                        {year.startsOn} &rarr; {year.endsOn}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={statusInfo.variant}>
+                        {statusInfo.label}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex flex-wrap justify-end gap-1.5">
+                        {year.status === "DRAFT" && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => startEdit(year)}
+                              disabled={busy}
+                            >
+                              <Pencil className="mr-1 h-3.5 w-3.5" />
+                              แก้ไข
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => promptActivate(year)}
+                              disabled={busy}
+                            >
+                              <CheckCircle2 className="mr-1 h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                              เปิดใช้งาน
+                            </Button>
+                          </>
+                        )}
+                        {year.status === "ACTIVE" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => promptClose(year)}
+                            disabled={busy}
+                          >
+                            <Lock className="mr-1 h-3.5 w-3.5" />
+                            ปิดปีการศึกษา
+                          </Button>
+                        )}
+                        {year.status === "CLOSED" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => promptReopen(year)}
+                            disabled={busy}
+                          >
+                            <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                            เปิดใหม่
+                          </Button>
+                        )}
+                        <Button variant="destructive" size="sm" onClick={() => promptDelete(year)} disabled={busy}>
+                          <Trash2 className="size-3.5" />ลบ
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Modal เพิ่มปีการศึกษา */}
+      <Dialog open={createOpen} onOpenChange={(open) => { if (!busy) setCreateOpen(open); }}>
+        <DialogContent showCloseButton={!busy} className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>เพิ่มปีการศึกษาใหม่</DialogTitle>
+            <DialogDescription>
+              กำหนดรหัสปีการศึกษาและช่วงวันที่เริ่มต้น-สิ้นสุด
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="create-code">รหัสปีการศึกษา</Label>
+              <Input
+                id="create-code"
+                value={form.code}
+                onChange={(e) => setForm({ ...form, code: e.target.value })}
+                placeholder="เช่น 2569"
+                disabled={busy}
+                required
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="create-start">วันเริ่มต้น</Label>
+                <Input
+                  id="create-start"
+                  type="date"
+                  value={form.startsOn}
+                  onChange={(e) =>
+                    setForm({ ...form, startsOn: e.target.value })
+                  }
+                  disabled={busy}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-end">วันสิ้นสุด</Label>
+                <Input
+                  id="create-end"
+                  type="date"
+                  value={form.endsOn}
+                  onChange={(e) =>
+                    setForm({ ...form, endsOn: e.target.value })
+                  }
+                  disabled={busy}
+                  required
+                />
+              </div>
+            </div>
+            <DialogFooter className="mt-4 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCreateOpen(false)}
+                disabled={busy}
+              >
+                ยกเลิก
+              </Button>
+              <Button type="submit" disabled={busy}>
+                เพิ่มปีการศึกษา
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal แก้ไขปีการศึกษา */}
+      <Dialog open={editOpen} onOpenChange={(open) => { if (!busy) setEditOpen(open); }}>
+        <DialogContent showCloseButton={!busy} className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>แก้ไขปีการศึกษา {editingYear?.code}</DialogTitle>
+            <DialogDescription>
+              แก้ไขรหัสและช่วงวันที่ของปีการศึกษา (แก้ไขได้เฉพาะสถานะฉบับร่าง)
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSaveEdit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-code">รหัสปีการศึกษา</Label>
+              <Input
+                id="edit-code"
+                value={editForm.code}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, code: e.target.value })
+                }
+                disabled={busy}
+                required
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="edit-start">วันเริ่มต้น</Label>
+                <Input
+                  id="edit-start"
+                  type="date"
+                  value={editForm.startsOn}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, startsOn: e.target.value })
+                  }
+                  disabled={busy}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-end">วันสิ้นสุด</Label>
+                <Input
+                  id="edit-end"
+                  type="date"
+                  value={editForm.endsOn}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, endsOn: e.target.value })
+                  }
+                  disabled={busy}
+                  required
+                />
+              </div>
+            </div>
+            <DialogFooter className="mt-4 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditOpen(false)}
+                disabled={busy}
+              >
+                ยกเลิก
+              </Button>
+              <Button type="submit" disabled={busy}>
+                บันทึกการแก้ไข
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reusable Confirm Dialog */}
+      <ConfirmDialog
+        open={confirmState.open}
+        onOpenChange={(open) =>
+          setConfirmState((prev) => ({ ...prev, open }))
+        }
+        title={confirmState.title}
+        description={confirmState.description}
+        confirmText={confirmState.confirmText}
+        variant={confirmState.variant}
+        loading={busy}
+        onConfirm={confirmState.action}
+      />
     </div>
   );
 }

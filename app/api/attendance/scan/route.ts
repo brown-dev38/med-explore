@@ -3,9 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/dal";
 import { attendanceScanSchema } from "@/lib/validation";
 import { errorResponse, successResponse } from "@/lib/api";
-import { recordAudit } from "@/lib/audit";
 import { hashQrToken } from "@/lib/qr";
-import { AttendanceError, hasEvent, recordAttendance } from "@/lib/attendance";
+import { AttendanceError, recordAttendance } from "@/lib/attendance";
 import { toAttendanceDto } from "@/lib/participations";
 
 export async function POST(req: Request) {
@@ -59,16 +58,9 @@ export async function POST(req: Request) {
     );
   }
 
-  if (
-    session.purpose === "CHECK_OUT" &&
-    !(await hasEvent(participation.id, "CHECK_IN"))
-  ) {
-    return errorResponse("ยังไม่พบการเช็คอิน ไม่สามารถเช็คเอาท์ได้", 400);
-  }
-
-  let record;
+  let result;
   try {
-    record = await recordAttendance({
+    result = await recordAttendance({
       participationId: participation.id,
       eventType: session.purpose,
       method: "QR",
@@ -79,23 +71,13 @@ export async function POST(req: Request) {
     if (error instanceof AttendanceError) {
       return errorResponse(error.message, error.status);
     }
-    throw error;
+    if ((error as { code?: string }).code === "P2034") return errorResponse("มีการลงเวลาพร้อมกัน กรุณาลองอีกครั้ง", 409);
+    console.error("Attendance scan failed:", error);
+    return errorResponse("บันทึกเวลาและดาวไม่สำเร็จ กรุณาลองใหม่", 500);
   }
 
-  await recordAudit({
-    actorId: userId,
-    action: "attendance.record",
-    entityType: "AttendanceRecord",
-    entityId: record.id,
-    details: {
-      activityId: String(session.activityId),
-      eventType: session.purpose,
-      method: "QR",
-    },
-  });
-
   return successResponse(
-    { ...toAttendanceDto(record), activityId: String(session.activityId) },
+    { ...toAttendanceDto(result.record), activityId: String(session.activityId), evaluation: result.evaluation },
     201,
   );
 }

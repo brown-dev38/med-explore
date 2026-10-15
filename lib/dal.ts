@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { sessionExitReason, sessionLoginPath } from "@/lib/session-notices";
 import {
   canAccessAdmin,
   hasPermission,
@@ -19,8 +20,10 @@ export type SessionUser = {
   permissions: string[];
 };
 
+const getCurrentSession = cache(auth);
+
 export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
-  const session = await auth();
+  const session = await getCurrentSession();
   const user = session?.user;
   if (!user?.id) return null;
 
@@ -36,7 +39,11 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
 
 export async function requireAuth(): Promise<SessionUser> {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) {
+    const session = await getCurrentSession();
+    const reason = sessionExitReason(session);
+    redirect(reason === "account-suspended" || reason === "account-deleted" ? sessionLoginPath(reason) : "/login");
+  }
   return user;
 }
 

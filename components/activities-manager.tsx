@@ -3,37 +3,58 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { ActivityListItem, ActivityStatus } from "@/types/activity";
+import { toast } from "sonner";
 import {
-  formatThaiDateTime,
-  localInputToIso,
-} from "@/lib/datetime";
+  Plus,
+  Calendar,
+  Clock,
+  MapPin,
+  Users,
+  CheckCircle,
+  XCircle,
+  Trash2,
+  ExternalLink,
+} from "lucide-react";
+import type { ActivityListItem, ActivityStatus } from "@/types/activity";
+import { formatThaiDateTime, localInputToIso } from "@/lib/datetime";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
-const STATUS_LABEL: Record<ActivityStatus, string> = {
-  DRAFT: "ฉบับร่าง",
-  PUBLISHED: "เปิดรับลงทะเบียน",
-  COMPLETED: "สิ้นสุด",
-  CANCELLED: "ยกเลิก",
+const STATUS_CONFIG: Record<
+  ActivityStatus,
+  { label: string; variant: "default" | "secondary" | "destructive" | "outline" }
+> = {
+  DRAFT: { label: "ฉบับร่าง", variant: "secondary" },
+  PUBLISHED: { label: "เปิดรับลงทะเบียน", variant: "default" },
+  COMPLETED: { label: "สิ้นสุดกิจกรรม", variant: "outline" },
+  CANCELLED: { label: "ยกเลิกกิจกรรม", variant: "destructive" },
 };
-
-const STATUS_STYLE: Record<ActivityStatus, string> = {
-  DRAFT: "bg-slate-100 text-slate-700 dark:bg-neutral-800 dark:text-slate-200",
-  PUBLISHED:
-    "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300",
-  COMPLETED:
-    "bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300",
-  CANCELLED:
-    "bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300",
-};
-
-const inputClass =
-  "w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-slate-100";
-
-const btnPrimary =
-  "inline-flex items-center rounded-xl bg-gradient-to-r from-indigo-600 to-sky-600 px-4 py-2 text-sm font-medium text-white transition-all hover:from-indigo-500 hover:to-sky-500 disabled:cursor-not-allowed disabled:opacity-60";
-
-const btnGhost =
-  "inline-flex items-center rounded-xl border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-slate-200 dark:hover:bg-neutral-800";
 
 const emptyForm = {
   title: "",
@@ -47,21 +68,35 @@ const emptyForm = {
 export function ActivitiesManager({
   initial,
   detailBasePath = "/organizer/activities",
+  canDeleteAll = false,
 }: {
   initial: ActivityListItem[];
   detailBasePath?: string;
+  canDeleteAll?: boolean;
 }) {
   const router = useRouter();
   const [items, setItems] = useState(initial);
   const [form, setForm] = useState(emptyForm);
+  const [createOpen, setCreateOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmConfig, setConfirmConfig] = useState({
+    title: "",
+    description: "",
+    confirmText: "ยืนยัน",
+    variant: "default" as "default" | "destructive",
+    action: async (): Promise<boolean> => false,
+  });
 
   async function reload() {
-    const res = await fetch("/api/activities");
-    if (res.ok) {
+    try {
+      const res = await fetch("/api/activities");
+      if (!res.ok) throw new Error("refresh failed");
       const json = await res.json();
       setItems(json.data);
+    } catch {
+      toast.warning("บันทึกแล้ว แต่โหลดรายการล่าสุดไม่สำเร็จ กรุณารีเฟรชหน้าจอ");
     }
   }
 
@@ -71,7 +106,6 @@ export function ActivitiesManager({
     body?: unknown,
   ): Promise<boolean> {
     setBusy(true);
-    setError(null);
     try {
       const res = await fetch(url, {
         method,
@@ -80,14 +114,14 @@ export function ActivitiesManager({
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(json.message ?? "เกิดข้อผิดพลาด กรุณาลองใหม่");
+        toast.error(json.message ?? "เกิดข้อผิดพลาด กรุณาลองใหม่");
         return false;
       }
       await reload();
       router.refresh();
       return true;
     } catch {
-      setError("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
+      toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
       return false;
     } finally {
       setBusy(false);
@@ -97,7 +131,7 @@ export function ActivitiesManager({
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!form.title.trim() || !form.startsAt || !form.endsAt) {
-      setError("กรุณากรอกชื่อกิจกรรมและช่วงเวลาให้ครบถ้วน");
+      toast.error("กรุณากรอกชื่อกิจกรรมและช่วงเวลาให้ครบถ้วน");
       return;
     }
     const ok = await request("/api/activities", "POST", {
@@ -108,214 +142,356 @@ export function ActivitiesManager({
       endsAt: localInputToIso(form.endsAt),
       minMinutes: Number(form.minMinutes) || 90,
     });
-    if (ok) setForm(emptyForm);
+    if (ok) {
+      toast.success("สร้างกิจกรรมใหม่เรียบร้อยแล้ว");
+      setForm(emptyForm);
+      setCreateOpen(false);
+    }
   }
 
-  const changeStatus = (id: string, status: ActivityStatus) =>
-    request(`/api/activities/${id}`, "PATCH", { status });
+  function promptPublish(activity: ActivityListItem) {
+    setConfirmConfig({
+      title: `เปิดรับลงทะเบียน: ${activity.title}`,
+      description:
+        "เมื่อเปิดรับลงทะเบียนแล้ว นิสิตจะสามารถลงทะเบียนและสแกน QR เข้าร่วมกิจกรรมนี้ได้ คุณต้องการเปิดรับลงทะเบียนใช่หรือไม่?",
+      confirmText: "เปิดรับลงทะเบียน",
+      variant: "default",
+      action: async () => {
+        const ok = await request(`/api/activities/${activity.id}`, "PATCH", {
+          status: "PUBLISHED",
+        });
+        if (ok) toast.success("เปิดรับลงทะเบียนกิจกรรมแล้ว");
+        return ok;
+      },
+    });
+    setConfirmOpen(true);
+  }
 
-  const remove = (id: string) => request(`/api/activities/${id}`, "DELETE");
+  function promptComplete(activity: ActivityListItem) {
+    setConfirmConfig({
+      title: `ยืนยันสิ้นสุดกิจกรรม: ${activity.title}`,
+      description:
+        "เมื่อสิ้นสุดกิจกรรมแล้ว รายละเอียดของกิจกรรมจะไม่สามารถแก้ไขได้ คุณต้องการสิ้นสุดกิจกรรมนี้หรือไม่?",
+      confirmText: "สิ้นสุดกิจกรรม",
+      variant: "default",
+      action: async () => {
+        const ok = await request(`/api/activities/${activity.id}`, "PATCH", {
+          status: "COMPLETED",
+        });
+        if (ok) toast.success("สิ้นสุดกิจกรรมเรียบร้อยแล้ว");
+        return ok;
+      },
+    });
+    setConfirmOpen(true);
+  }
+
+  function promptCancel(activity: ActivityListItem) {
+    setConfirmConfig({
+      title: `ยืนยันยกเลิกกิจกรรม: ${activity.title}`,
+      description:
+        "คุณต้องการยกเลิกกิจกรรมนี้หรือไม่? เมื่อยกเลิกแล้วจะไม่สามารถเปิดรับลงทะเบียนใหม่ได้",
+      confirmText: "ยกเลิกกิจกรรม",
+      variant: "destructive",
+      action: async () => {
+        const ok = await request(`/api/activities/${activity.id}`, "PATCH", {
+          status: "CANCELLED",
+        });
+        if (ok) toast.success("ยกเลิกกิจกรรมเรียบร้อยแล้ว");
+        return ok;
+      },
+    });
+    setConfirmOpen(true);
+  }
+
+  function promptDelete(activity: ActivityListItem) {
+    setConfirmConfig({
+      title: `ยืนยันการลบกิจกรรม: ${activity.title}`,
+      description: canDeleteAll
+        ? "ลบกิจกรรมนี้ถาวร รวมผู้ลงทะเบียน เวลาเข้า–ออก QR ผู้ช่วยงาน แบบประเมิน และรายการดาวที่ผูกกับกิจกรรม ประวัติ Audit Log ยังคงอยู่ การลบไม่สามารถย้อนกลับได้ ยืนยันลบหรือไม่?"
+        : "การลบกิจกรรมฉบับร่างนี้จะไม่สามารถย้อนกลับได้ คุณต้องการลบกิจกรรมนี้ใช่หรือไม่?",
+      confirmText: "ลบกิจกรรม",
+      variant: "destructive",
+      action: async () => {
+        const ok = await request(`/api/activities/${activity.id}`, "DELETE");
+        if (ok) toast.success("ลบกิจกรรมเรียบร้อยแล้ว");
+        return ok;
+      },
+    });
+    setConfirmOpen(true);
+  }
 
   return (
     <div className="space-y-6">
-      {error && (
-        <div
-          role="alert"
-          className="rounded-xl border border-red-200 bg-red-50 p-3.5 text-sm font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
-        >
-          {error}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            จัดการกิจกรรม
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            สร้างกิจกรรม เปิดรับลงทะเบียน สร้าง QR Code และบันทึกเวลาเข้าร่วมงาน
+          </p>
         </div>
-      )}
-
-      <form
-        onSubmit={handleCreate}
-        className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-white p-5 sm:grid-cols-2 lg:grid-cols-3 dark:border-neutral-800 dark:bg-neutral-900"
-      >
-        <div className="space-y-1 sm:col-span-2 lg:col-span-3">
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
-            ชื่อกิจกรรม
-          </label>
-          <input
-            value={form.title}
-            onChange={(e) => setForm({ ...form, title: e.target.value })}
-            placeholder="เช่น อบรมปฐมพยาบาลเบื้องต้น"
-            disabled={busy}
-            className={inputClass}
-          />
-        </div>
-        <div className="space-y-1">
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
-            สถานที่
-          </label>
-          <input
-            value={form.location}
-            onChange={(e) => setForm({ ...form, location: e.target.value })}
-            placeholder="เช่น ห้องประชุม 1"
-            disabled={busy}
-            className={inputClass}
-          />
-        </div>
-        <div className="space-y-1">
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
-            เวลาเริ่มต้น
-          </label>
-          <input
-            type="datetime-local"
-            value={form.startsAt}
-            onChange={(e) => setForm({ ...form, startsAt: e.target.value })}
-            disabled={busy}
-            className={inputClass}
-          />
-        </div>
-        <div className="space-y-1">
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
-            เวลาสิ้นสุด
-          </label>
-          <input
-            type="datetime-local"
-            value={form.endsAt}
-            onChange={(e) => setForm({ ...form, endsAt: e.target.value })}
-            disabled={busy}
-            className={inputClass}
-          />
-        </div>
-        <div className="space-y-1">
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
-            จำนวนนาทีขั้นต่ำ
-          </label>
-          <input
-            type="number"
-            min={1}
-            value={form.minMinutes}
-            onChange={(e) => setForm({ ...form, minMinutes: e.target.value })}
-            disabled={busy}
-            className={inputClass}
-          />
-        </div>
-        <div className="space-y-1 sm:col-span-2">
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
-            รายละเอียด
-          </label>
-          <input
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-            placeholder="รายละเอียดเพิ่มเติม (ไม่บังคับ)"
-            disabled={busy}
-            className={inputClass}
-          />
-        </div>
-        <div className="flex items-end">
-          <button type="submit" disabled={busy} className={`${btnPrimary} w-full justify-center`}>
-            สร้างกิจกรรม
-          </button>
-        </div>
-      </form>
-
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-neutral-800/60 dark:text-slate-400">
-            <tr>
-              <th className="px-4 py-3 font-semibold">กิจกรรม</th>
-              <th className="px-4 py-3 font-semibold">ช่วงเวลา</th>
-              <th className="px-4 py-3 font-semibold">สถานะ</th>
-              <th className="px-4 py-3 font-semibold">ผู้ลงทะเบียน</th>
-              <th className="px-4 py-3 text-right font-semibold">การจัดการ</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-neutral-800">
-            {items.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
-                  ยังไม่มีกิจกรรม
-                </td>
-              </tr>
-            )}
-            {items.map((activity) => (
-              <tr key={activity.id}>
-                <td className="px-4 py-3">
-                  <Link
-                    href={`${detailBasePath}/${activity.id}`}
-                    className="font-medium text-slate-900 hover:text-indigo-600 dark:text-white dark:hover:text-indigo-400"
-                  >
-                    {activity.title}
-                  </Link>
-                  {activity.location && (
-                    <div className="text-xs text-slate-500 dark:text-slate-400">
-                      {activity.location}
-                    </div>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                  {formatThaiDateTime(activity.startsAt)}
-                  <div className="text-xs text-slate-400">
-                    ถึง {formatThaiDateTime(activity.endsAt)}
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <span
-                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_STYLE[activity.status]}`}
-                  >
-                    {STATUS_LABEL[activity.status]}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                  {activity.participantCount}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex flex-wrap justify-end gap-2">
-                    <Link
-                      href={`${detailBasePath}/${activity.id}`}
-                      className={btnGhost}
-                    >
-                      รายละเอียด
-                    </Link>
-                    {activity.status === "DRAFT" && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => changeStatus(activity.id, "PUBLISHED")}
-                          disabled={busy}
-                          className={btnGhost}
-                        >
-                          เปิดรับลงทะเบียน
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => remove(activity.id)}
-                          disabled={busy}
-                          className="inline-flex items-center rounded-xl border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-60 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40"
-                        >
-                          ลบ
-                        </button>
-                      </>
-                    )}
-                    {activity.status === "PUBLISHED" && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => changeStatus(activity.id, "COMPLETED")}
-                          disabled={busy}
-                          className={btnGhost}
-                        >
-                          สิ้นสุดกิจกรรม
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => changeStatus(activity.id, "CANCELLED")}
-                          disabled={busy}
-                          className={btnGhost}
-                        >
-                          ยกเลิก
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <Button onClick={() => setCreateOpen(true)} disabled={busy} className="gap-2">
+          <Plus className="h-4 w-4" />
+          สร้างกิจกรรมใหม่
+        </Button>
       </div>
+
+      <Card>
+        <CardHeader className="p-4 pb-0">
+          <CardTitle className="text-base font-semibold">
+            รายการกิจกรรมทั้งหมด ({items.length})
+          </CardTitle>
+          <CardDescription className="text-xs">
+            คลิกที่ชื่อกิจกรรมหรือปุ่มรายละเอียดเพื่อดูข้อมูลผู้ลงทะเบียนและจัดการ QR Code
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-0 pt-3">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>ชื่อกิจกรรม / สถานที่</TableHead>
+                <TableHead>ช่วงเวลา</TableHead>
+                <TableHead>สถานะ</TableHead>
+                <TableHead>ผู้ลงทะเบียน</TableHead>
+                <TableHead className="text-right">การจัดการ</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.length === 0 && (
+                <TableRow>
+                  <TableCell
+                    colSpan={5}
+                    className="h-28 text-center text-muted-foreground"
+                  >
+                    ยังไม่มีกิจกรรมในระบบ กรุณากดปุ่มสร้างกิจกรรมใหม่
+                  </TableCell>
+                </TableRow>
+              )}
+              {items.map((act) => {
+                const statusInfo = STATUS_CONFIG[act.status];
+                return (
+                  <TableRow key={act.id}>
+                    <TableCell>
+                      <Link
+                        href={`${detailBasePath}/${act.id}`}
+                        className="font-semibold text-foreground hover:text-primary transition-colors flex items-center gap-1.5"
+                      >
+                        {act.title}
+                        <ExternalLink className="h-3 w-3 opacity-60" />
+                      </Link>
+                      {act.location && (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                          <MapPin className="h-3 w-3" />
+                          {act.location}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-xs text-foreground font-medium flex items-center gap-1">
+                        <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                        {formatThaiDateTime(act.startsAt)}
+                      </div>
+                      <div className="text-xs text-muted-foreground pl-4.5">
+                        ถึง {formatThaiDateTime(act.endsAt)}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground pl-4.5 flex items-center gap-1 mt-1 font-medium">
+                        <Clock className="h-3 w-3 text-muted-foreground" />
+                        เกณฑ์เวลา: <span className="font-semibold text-foreground">{act.minMinutes} นาที</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={statusInfo.variant}>
+                        {statusInfo.label}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-foreground">
+                        <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                        {act.participantCount} คน
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex flex-wrap justify-end gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          render={
+                            <Link href={`${detailBasePath}/${act.id}`}>
+                              รายละเอียด
+                            </Link>
+                          }
+                        />
+
+                        {act.status === "DRAFT" && (
+                            <Button
+                              variant="default"
+                              size="sm"
+                              onClick={() => promptPublish(act)}
+                              disabled={busy}
+                            >
+                              เปิดรับลงทะเบียน
+                            </Button>
+                        )}
+
+                        {act.status === "PUBLISHED" && (
+                          <>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => promptComplete(act)}
+                              disabled={busy}
+                            >
+                              <CheckCircle className="mr-1 h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                              สิ้นสุดกิจกรรม
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => promptCancel(act)}
+                              disabled={busy}
+                            >
+                              <XCircle className="mr-1 h-3.5 w-3.5" />
+                              ยกเลิก
+                            </Button>
+                          </>
+                        )}
+                        {(canDeleteAll || act.status === "DRAFT") && (
+                          <Button variant="destructive" size="sm" onClick={() => promptDelete(act)} disabled={busy}>
+                            <Trash2 className="size-3.5" />ลบ
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Modal สร้างกิจกรรมใหม่ */}
+      <Dialog open={createOpen} onOpenChange={(open) => { if (!busy) setCreateOpen(open); }}>
+        <DialogContent showCloseButton={!busy} className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>สร้างกิจกรรมใหม่</DialogTitle>
+            <DialogDescription>
+              กรอกข้อมูลกิจกรรม ช่วงเวลา และเงื่อนไขนาทีขั้นต่ำในการเข้าร่วม
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="act-title">ชื่อกิจกรรม</Label>
+              <Input
+                id="act-title"
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+                placeholder="เช่น อบรมปฐมพยาบาลเบื้องต้น (CPR & AED)"
+                disabled={busy}
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="act-location">สถานที่จัดกิจกรรม</Label>
+                <Input
+                  id="act-location"
+                  value={form.location}
+                  onChange={(e) =>
+                    setForm({ ...form, location: e.target.value })
+                  }
+                  placeholder="เช่น ห้องบรรยาย 101"
+                  disabled={busy}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="act-minMinutes">นาทีขั้นต่ำสำหรับดาว</Label>
+                <Input
+                  id="act-minMinutes"
+                  type="number"
+                  min={1}
+                  value={form.minMinutes}
+                  onChange={(e) =>
+                    setForm({ ...form, minMinutes: e.target.value })
+                  }
+                  disabled={busy}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="act-start">วันและเวลาเริ่มต้น</Label>
+                <Input
+                  id="act-start"
+                  type="datetime-local"
+                  value={form.startsAt}
+                  onChange={(e) =>
+                    setForm({ ...form, startsAt: e.target.value })
+                  }
+                  disabled={busy}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="act-end">วันและเวลาสิ้นสุด</Label>
+                <Input
+                  id="act-end"
+                  type="datetime-local"
+                  value={form.endsAt}
+                  onChange={(e) => setForm({ ...form, endsAt: e.target.value })}
+                  disabled={busy}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="act-desc">รายละเอียดเพิ่มเติม (ไม่บังคับ)</Label>
+              <textarea
+                id="act-desc"
+                value={form.description}
+                onChange={(e) =>
+                  setForm({ ...form, description: e.target.value })
+                }
+                rows={3}
+                placeholder="รายละเอียด วิทยากร หรือสิ่งที่ต้องเตรียมมา..."
+                disabled={busy}
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+
+            <DialogFooter className="mt-4 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCreateOpen(false)}
+                disabled={busy}
+              >
+                ยกเลิก
+              </Button>
+              <Button type="submit" disabled={busy}>
+                สร้างกิจกรรม
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reusable Confirm Dialog */}
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={confirmConfig.title}
+        description={confirmConfig.description}
+        confirmText={confirmConfig.confirmText}
+        variant={confirmConfig.variant}
+        loading={busy}
+        onConfirm={confirmConfig.action}
+      />
     </div>
   );
 }

@@ -20,7 +20,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
   const participations = await prisma.participation.findMany({
     where: { activityId },
-    include: { user: true, attendanceRecords: true },
+    include: { user: true, attendanceRecords: true, starTransactions: true },
     orderBy: { createdAt: "asc" },
   });
 
@@ -92,7 +92,7 @@ export async function POST(req: Request, { params }: RouteContext) {
 
   const created = await prisma.participation.findUnique({
     where: { activityId_userId: { activityId, userId } },
-    include: { user: true, attendanceRecords: true },
+    include: { user: true, attendanceRecords: true, starTransactions: true },
   });
 
   return successResponse(created ? toParticipationDto(created) : null, 201);

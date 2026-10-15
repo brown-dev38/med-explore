@@ -1,8 +1,10 @@
 import type { NextAuthOptions } from "next-auth";
 import { getServerSession } from "next-auth";
+import { connection } from "next/server";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcrypt";
 import { prisma } from "@/lib/prisma";
+import { getAccountStatus } from "@/lib/account-status";
 
 export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt" },
@@ -76,10 +78,22 @@ export const authOptions: NextAuthOptions = {
         token.role = user.role ?? null;
         token.roles = user.roles ?? [];
         token.permissions = user.permissions ?? [];
+        token.accountStatus = "ACTIVE";
+      } else {
+        token.accountStatus = token.uid
+          ? await getAccountStatus(token.uid)
+          : token.accountStatus ?? "UNAUTHENTICATED";
+        if (token.accountStatus !== "ACTIVE" || !token.uid) {
+          token.uid = undefined;
+          token.role = null;
+          token.roles = [];
+          token.permissions = [];
+        }
       }
       return token;
     },
     async session({ session, token }) {
+      session.accountStatus = token.accountStatus ?? "UNAUTHENTICATED";
       if (session.user) {
         session.user.id = token.uid ?? "";
         session.user.role = token.role ?? null;
@@ -91,6 +105,9 @@ export const authOptions: NextAuthOptions = {
   },
 };
 
-export function auth() {
+export async function auth() {
+  // NextAuth generates CSRF randomness before reading cookies; wait for a real
+  // request so Cache Components does not execute it during prerendering.
+  await connection();
   return getServerSession(authOptions);
 }

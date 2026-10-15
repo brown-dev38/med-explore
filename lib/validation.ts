@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+// Touched to trigger Turbopack re-evaluation
 const dateString = z
   .string()
   .trim()
@@ -26,12 +27,38 @@ export const academicYearUpdateSchema = z.object({
   status: statusEnum.optional(),
 });
 
+const singleUserRoleSchema = z.array(z.enum(["ADMIN", "ORGANIZER", "STUDENT"]))
+  .length(1, "กรุณาเลือกบทบาทเพียงหนึ่งบทบาท");
+
 export const userUpdateSchema = z.object({
   firstname: z.string().trim().nullable().optional(),
   lastname: z.string().trim().nullable().optional(),
   studentCode: z.string().trim().max(50).nullable().optional(),
   isActive: z.boolean().optional(),
-  roles: z.array(z.string().trim().min(1)).optional(),
+  roles: singleUserRoleSchema.optional(),
+});
+
+export const userCreateSchema = z.object({
+  username: z.string().trim().min(1, "กรุณาระบุชื่อผู้ใช้").max(191),
+  email: z.string().trim().email("รูปแบบอีเมลไม่ถูกต้อง").max(191).transform((value) => value.toLowerCase()),
+  password: z.string().min(6, "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร")
+    .refine((value) => new TextEncoder().encode(value).length <= 72, "รหัสผ่านยาวเกินไป"),
+  firstname: z.string().trim().max(191).nullable().optional(),
+  lastname: z.string().trim().max(191).nullable().optional(),
+  studentCode: z.string().trim().max(50).nullable().optional(),
+  isActive: z.boolean().default(true),
+  roles: singleUserRoleSchema.default(["STUDENT"]),
+});
+
+export const studentRegisterSchema = userCreateSchema.pick({
+  username: true,
+  email: true,
+  password: true,
+  firstname: true,
+  lastname: true,
+}).extend({
+  studentCode: z.string({ error: "กรุณาระบุรหัสนิสิต" }).trim()
+    .min(1, "กรุณาระบุรหัสนิสิต").max(50, "รหัสนิสิตต้องไม่เกิน 50 ตัวอักษร"),
 });
 
 const dateTime = z
@@ -101,3 +128,21 @@ export const bulkAttendanceSchema = z
   .refine((value) => Boolean(value.checkInAt || value.checkOutAt), {
     message: "กรุณาระบุเวลาอย่างน้อยหนึ่งรายการ",
   });
+
+export const helperAssignSchema = z.object({
+  userId: z.string().trim().min(1, "กรุณาเลือกนิสิต"),
+  description: z.string().trim().max(1000).nullable().optional(),
+});
+
+export const helperBulkAssignSchema = z.object({
+  userIds: z
+    .array(z.string().trim().min(1))
+    .min(1, "กรุณาเลือกนิสิตอย่างน้อย 1 คน"),
+  description: z.string().trim().max(1000).nullable().optional(),
+});
+
+export const helperUpdateSchema = z.object({
+  status: z.enum(["ASSIGNED", "COMPLETED", "CANCELLED"]),
+  description: z.string().trim().max(1000).nullable().optional(),
+});
+

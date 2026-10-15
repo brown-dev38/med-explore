@@ -1,7 +1,9 @@
 import type { DefaultSession } from "next-auth";
+import type { AccountStatus } from "@/lib/account-status";
 
 declare module "next-auth" {
   interface Session {
+    accountStatus?: AccountStatus;
     user: {
       id: string;
       role: string | null;
@@ -19,6 +21,7 @@ declare module "next-auth" {
 
 declare module "next-auth/jwt" {
   interface JWT {
+    accountStatus?: AccountStatus;
     uid?: string;
     role?: string | null;
     roles?: string[];

@@ -1,4 +1,5 @@
 export type AuthSession = {
+  accountStatus?: "ACTIVE" | "SUSPENDED" | "DELETED" | "UNAUTHENTICATED";
   user?: {
     id?: string;
     name?: string | null;
@@ -17,8 +18,8 @@ export async function fetchSession(): Promise<AuthSession> {
   }
 }
 
-async function getCsrfToken(): Promise<string> {
-  const res = await fetch("/api/auth/csrf", { credentials: "include" });
+async function getCsrfToken(signal?: AbortSignal): Promise<string> {
+  const res = await fetch("/api/auth/csrf", { credentials: "include", signal });
   const data = await res.json().catch(() => ({}));
   return data.csrfToken as string;
 }
@@ -47,12 +48,14 @@ export async function signInWithCredentials(
   return { ok: Boolean(session?.user?.id), session };
 }
 
-export async function signOutClient(callbackUrl = "/"): Promise<void> {
-  const csrfToken = await getCsrfToken();
-  await fetch("/api/auth/signout", {
+export async function signOutClient(callbackUrl = "/", signal?: AbortSignal): Promise<void> {
+  const csrfToken = await getCsrfToken(signal);
+  const res = await fetch("/api/auth/signout", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     credentials: "include",
+    signal,
     body: new URLSearchParams({ csrfToken, callbackUrl, json: "true" }),
   });
+  if (!res.ok) throw new Error("Sign out failed");
 }

@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import jsQR from "jsqr";
+import { AlertCircle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 
 export function QrScanner({
   onDetected,
@@ -114,9 +117,7 @@ export function QrScanner({
   return (
     <div className="space-y-3">
       {error ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
-          {error}
-        </div>
+        <Alert variant="destructive"><AlertCircle /><AlertDescription>{error}</AlertDescription></Alert>
       ) : (
         <div className="relative overflow-hidden rounded-2xl border border-slate-300 bg-black dark:border-neutral-700">
           <video
@@ -134,13 +135,14 @@ export function QrScanner({
       <p className="text-center text-xs text-slate-500 dark:text-slate-400">
         เล็ง QR ให้อยู่ในกรอบ
       </p>
-      <button
+      <Button
         type="button"
+        variant="outline"
         onClick={onCancel}
-        className="w-full rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 dark:border-neutral-700 dark:text-slate-200 dark:hover:bg-neutral-800"
+        className="w-full"
       >
         ยกเลิก
-      </button>
+      </Button>
     </div>
   );
 }

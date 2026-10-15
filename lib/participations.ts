@@ -6,7 +6,7 @@ import type {
 } from "@/types/activity";
 
 export type ParticipationWithRelations = Prisma.ParticipationGetPayload<{
-  include: { user: true; attendanceRecords: true };
+  include: { user: true; attendanceRecords: true; starTransactions: true };
 }>;
 
 export function toAttendanceDto(
@@ -38,6 +38,8 @@ export function toParticipationDto(
     status: participation.status,
     eligibilityStatus: participation.eligibilityStatus,
     attendedMinutes: participation.attendedMinutes,
+    yellowStarPoints: participation.starTransactions.filter((star) => star.starType === "YELLOW" && star.status === "APPROVED").reduce((sum, star) => sum + star.points, 0),
+    reviewNote: participation.reviewNote,
     createdAt: participation.createdAt.toISOString(),
     attendance: participation.attendanceRecords.map(toAttendanceDto),
   };

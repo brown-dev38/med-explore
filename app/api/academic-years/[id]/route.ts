@@ -1,7 +1,8 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/dal";
-import { hasPermission, PERMISSIONS } from "@/lib/permissions";
+import { hasPermission, hasRole, PERMISSIONS, ROLES } from "@/lib/permissions";
+import { deleteAcademicYear, DeletionError } from "@/lib/admin-deletion";
 import { academicYearUpdateSchema } from "@/lib/validation";
 import { errorResponse, parseId, successResponse } from "@/lib/api";
 import { recordAudit } from "@/lib/audit";
@@ -98,7 +99,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 export async function DELETE(_req: Request, { params }: RouteContext) {
   const user = await getCurrentUser();
   if (!user) return errorResponse("กรุณาเข้าสู่ระบบ", 401);
-  if (!hasPermission(user, PERMISSIONS.ACADEMIC_YEAR_MANAGE)) {
+  if (!hasRole(user, ROLES.ADMIN)) {
     return errorResponse("ไม่มีสิทธิ์ดำเนินการ", 403);
   }
 
@@ -106,29 +107,10 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
   const yearId = parseId(id);
   if (!yearId) return errorResponse("ไม่พบข้อมูล", 404);
 
-  const current = await prisma.academicYear.findUnique({ where: { id: yearId } });
-  if (!current) return errorResponse("ไม่พบข้อมูล", 404);
-
-  if (current.status !== "DRAFT") {
-    return errorResponse("ลบได้เฉพาะปีการศึกษาที่เป็นฉบับร่างเท่านั้น", 409);
-  }
-
   try {
-    await prisma.academicYear.delete({ where: { id: yearId } });
-  } catch {
-    return errorResponse(
-      "ไม่สามารถลบได้เนื่องจากมีข้อมูลอ้างอิงอยู่",
-      409,
-    );
+    return successResponse(await deleteAcademicYear(yearId, BigInt(user.id)));
+  } catch (error) {
+    if (error instanceof DeletionError) return errorResponse(error.message, error.status);
+    return errorResponse("ลบปีการศึกษาไม่สำเร็จ ข้อมูลยังไม่ถูกลบ กรุณาลองใหม่", 500);
   }
-
-  await recordAudit({
-    actorId: BigInt(user.id),
-    action: "academic_year.delete",
-    entityType: "AcademicYear",
-    entityId: yearId,
-    details: { code: current.code },
-  });
-
-  return successResponse({ id: String(yearId) });
 }

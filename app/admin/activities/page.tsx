@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/dal";
-import { PERMISSIONS } from "@/lib/permissions";
+import { hasRole, PERMISSIONS, ROLES } from "@/lib/permissions";
 import { toActivityDto } from "@/lib/activities";
 import type { ActivityListItem } from "@/types/activity";
 import { ActivitiesManager } from "@/components/activities-manager";
@@ -19,7 +19,7 @@ export default function AdminActivitiesPage() {
 }
 
 async function AdminActivitiesContent() {
-  await requirePermission(PERMISSIONS.ACTIVITY_MANAGE);
+  const user = await requirePermission(PERMISSIONS.ACTIVITY_MANAGE);
 
   const activities = await prisma.activity.findMany({
     orderBy: { startsAt: "desc" },
@@ -42,7 +42,7 @@ async function AdminActivitiesContent() {
           สร้างกิจกรรม เปิดรับลงทะเบียน และบันทึกการเข้างาน
         </p>
       </div>
-      <ActivitiesManager initial={initial} detailBasePath="/admin/activities" />
+      <ActivitiesManager initial={initial} detailBasePath="/admin/activities" canDeleteAll={hasRole(user, ROLES.ADMIN)} />
     </div>
   );
 }

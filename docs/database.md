@@ -24,6 +24,9 @@
 - `Permission.code` unique (10 รหัส ดู [architecture.md](./architecture.md#rbac-การกำหนดสิทธิ์))
 
 ### `UserRole` (`user_roles`) — PK `(user_id, role_id)`
+- `user_id` unique: ผู้ใช้มีบทบาทได้ไม่เกิน 1 รายการ และฟอร์ม/API สร้างบัญชีพร้อมบทบาท 1 รายการเสมอ
+- Migration `20261015090000_single_user_role` เพิ่ม unique index โดยไม่เปลี่ยนบทบาทเดิม หากฐานข้อมูลอื่นมีหลายบทบาทต่อคน ต้องเลือกบทบาทให้เหลือคนละ 1 รายการก่อน deploy migration
+
 ### `RolePermission` (`role_permissions`) — PK `(role_id, permission_id)`
 
 ### `AcademicYear` (`academic_years`)
@@ -40,7 +43,7 @@
 | `organizer_id` | FK → User | ผู้สร้าง |
 | `title`, `description`, `location` | | |
 | `starts_at`, `ends_at` | DateTime(3) | ช่วงเวลา (ต้อง start < end) |
-| `min_minutes` | Int (default 90) | นาทีขั้นต่ำสำหรับเงื่อนไขรับดาว (Sprint 3) |
+| `min_minutes` | Int (default 90) | นาทีขั้นต่ำเพื่อให้ดาวสีเหลืองอัตโนมัติ |
 | `status` | `ActivityStatus` | `DRAFT` / `PUBLISHED` / `COMPLETED` / `CANCELLED` |
 
 ### `Participation` (`participations`)
@@ -48,8 +51,10 @@
 | --- | --- | --- |
 | `activity_id`, `user_id` | FK | **`@@unique([activityId, userId])`** กันลงทะเบียนซ้ำ |
 | `status` | `ParticipationStatus` | `REGISTERED` เป็นค่าเริ่มต้น |
-| `eligibility_status` | `ReviewStatus` | `PENDING` (ใช้จริงใน Sprint 3) |
-| `attended_minutes`, `review_due_at`, `reviewed_at/By`, `review_note` | | เตรียมไว้ Sprint 3 |
+| `eligibility_status` | `ReviewStatus` | `PENDING` เมื่อเวลาไม่ครบ, `APPROVED` เมื่อผ่านเกณฑ์, `REJECTED` เมื่อไม่ผ่าน |
+| `attended_minutes` | Int? | นาทีเต็มจากเช็คอินถึงเช็คเอาท์จริง; null เมื่อยังไม่ครบ |
+| `reviewed_at`, `reviewed_by`, `review_note` | | ผลประเมินเวลาอัตโนมัติ (ผู้ประเมินเป็น null), เหตุผลไม่ได้ดาว/ติดเพดาน |
+| `review_due_at` | DateTime? | เตรียมไว้สำหรับรอบตรวจสอบของผู้จัด |
 
 ### `AttendanceRecord` (`attendance_records`)
 | ฟิลด์ | ชนิด | หมายเหตุ |
@@ -74,9 +79,10 @@
 ### `AuditLog` (`audit_logs`)
 `actor_id?`, `action`, `entity_type`, `entity_id?`, `details` (Json), `created_at`
 
-## ตารางที่เตรียมไว้แล้ว (Sprint 3–4 ยังไม่ถูกเรียกใช้)
+## ดาวและตารางที่เตรียมไว้สำหรับขั้นถัดไป
 
-- `StarTransaction`, `HelperAssignment` (ดาว/ผู้ช่วย — Sprint 3)
+- `StarTransaction` ใช้งานแล้วสำหรับดาวสีเหลืองอัตโนมัติ: `points=1`, `status=APPROVED`; ประเมินไม่ผ่านภายหลังหรือเกินเพดานใช้ `REJECTED` โดยเก็บรายการเดิมไว้ ยอดสะสมนับเฉพาะ `APPROVED`
+- `HelperAssignment` และดาวสีเขียวยังเตรียมไว้สำหรับขั้นถัดไป
 - `RewardTier`, `RewardRedemption` (รางวัล/แลกคะแนน — Sprint 4)
 - `SurveyResponse` (แบบประเมิน)
 

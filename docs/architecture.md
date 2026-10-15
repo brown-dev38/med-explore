@@ -76,6 +76,8 @@ types/                                 # next-auth.d.ts, activity.ts, user.ts, a
 - ตรวจรหัสผ่านด้วย `bcrypt.compare` กับ `users.password_hash`
 - ถ้า `is_active = false` จะล็อกอินไม่ได้
 - Session เป็น **JWT** (`session.strategy = "jwt"`) เก็บ `uid`, `role`, `roles[]`, `permissions[]`
+- ทุกครั้งที่อ่าน session จะตรวจว่าบัญชียังอยู่และเปิดใช้งาน หากลบ/ปิดบัญชีจะล้างข้อมูลสิทธิ์ออกจาก session; Proxy ตรวจบัญชีก่อน redirect จากหน้าเข้าสู่ระบบ/สมัครสมาชิก/หน้าแรก และล้าง session cookie ที่ใช้ต่อไม่ได้
+- `components/session-guard.tsx` ตรวจ session บนหน้าใช้งานทุก 5 วินาที และเมื่อกลับแท็บ/ออนไลน์ โดยส่ง `cache: no-store`; เก็บ `accountStatus` เพื่อแยกการระงับ/ลบ/หมดอายุ แล้ว sign out อัตโนมัติ กรณีระงับใช้ `SuspendedAccountDialog` ค้างไว้จนกดกลับหน้าเข้าสู่ระบบ และหยุด monitor ระหว่างนั้น หน้า `/login?reason=account-suspended` ใช้ modal เดียวกันให้รับทราบ รวมถึงกรณี DAL redirect ระหว่างเปลี่ยนหน้า
 - ฝั่ง client ใช้ `lib/auth-client.ts` (`signInWithCredentials`, `signOutClient`, `fetchSession`) ที่ยิง `/api/auth/...` แบบ **relative URL** เพื่อให้ใช้ได้ทั้ง `localhost`, LAN IP และ HTTPS โดยไม่ผูกกับ `NEXTAUTH_URL`
 - หลังล็อกอินสำเร็จ ระบบเด้งไปแดชบอร์ดตามบทบาท (`dashboardPathFor`)
 

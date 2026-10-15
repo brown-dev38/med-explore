@@ -35,6 +35,7 @@ export function hasPermission(
   principal: Principal,
   code: PermissionCode,
 ): boolean {
+  if (hasRole(principal, ROLES.ADMIN)) return true;
   return Boolean(principal?.permissions?.includes(code));
 }
 

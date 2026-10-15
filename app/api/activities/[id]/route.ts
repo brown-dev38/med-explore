@@ -1,11 +1,12 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/dal";
-import { hasPermission, PERMISSIONS } from "@/lib/permissions";
+import { hasPermission, hasRole, PERMISSIONS, ROLES } from "@/lib/permissions";
+import { deleteActivity, DeletionError } from "@/lib/admin-deletion";
 import { activityUpdateSchema } from "@/lib/validation";
 import { errorResponse, parseId, successResponse } from "@/lib/api";
-import { recordAudit } from "@/lib/audit";
 import { toActivityDto } from "@/lib/activities";
+import { attendanceTransaction, recalculateActivityAttendance } from "@/lib/attendance";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -100,50 +101,40 @@ export async function PATCH(req: Request, { params }: RouteContext) {
   if (minMinutes !== undefined) data.minMinutes = minMinutes;
   if (status !== undefined) data.status = status;
 
-  const updated = await prisma.activity.update({ where: { id: current.id }, data });
-
-  await recordAudit({
-    actorId: BigInt(user.id),
-    action: "activity.update",
-    entityType: "Activity",
-    entityId: updated.id,
-    details: { title: updated.title, status: updated.status },
-  });
-
-  return successResponse(toActivityDto(updated));
+  try {
+    const updated = await attendanceTransaction(async (tx) => {
+      const activity = await tx.activity.update({ where: { id: current.id }, data });
+      if (minMinutes !== undefined || status !== undefined) {
+        await recalculateActivityAttendance(tx, current.id, BigInt(user.id));
+      }
+      await tx.auditLog.create({ data: {
+        actorId: BigInt(user.id), action: "activity.update", entityType: "Activity", entityId: activity.id,
+        details: { title: activity.title, status: activity.status },
+      } });
+      return activity;
+    });
+    return successResponse(toActivityDto(updated));
+  } catch (error) {
+    console.error("Activity update failed:", error);
+    return errorResponse("แก้ไขกิจกรรมและคำนวณดาวไม่สำเร็จ กรุณาลองใหม่", 500);
+  }
 }
 
 export async function DELETE(_req: Request, { params }: RouteContext) {
   const user = await getCurrentUser();
   if (!user) return errorResponse("กรุณาเข้าสู่ระบบ", 401);
-  if (!hasPermission(user, PERMISSIONS.ACTIVITY_MANAGE)) {
+  const isAdmin = hasRole(user, ROLES.ADMIN);
+  if (!isAdmin && !hasPermission(user, PERMISSIONS.ACTIVITY_MANAGE)) {
     return errorResponse("ไม่มีสิทธิ์ลบกิจกรรม", 403);
   }
 
   const { id } = await params;
-  const current = await loadActivity(id);
-  if (!current) return errorResponse("ไม่พบกิจกรรม", 404);
-
-  if (current.status !== "DRAFT") {
-    return errorResponse("ลบได้เฉพาะกิจกรรมที่เป็นฉบับร่างเท่านั้น", 409);
+  const activityId = parseId(id);
+  if (!activityId) return errorResponse("ไม่พบกิจกรรม", 404);
+  try {
+    return successResponse(await deleteActivity(activityId, BigInt(user.id), isAdmin));
+  } catch (error) {
+    if (error instanceof DeletionError) return errorResponse(error.message, error.status);
+    return errorResponse("ลบกิจกรรมไม่สำเร็จ ข้อมูลยังไม่ถูกลบ กรุณาลองใหม่", 500);
   }
-
-  const participants = await prisma.participation.count({
-    where: { activityId: current.id },
-  });
-  if (participants > 0) {
-    return errorResponse("ไม่สามารถลบได้เนื่องจากมีผู้ลงทะเบียนแล้ว", 409);
-  }
-
-  await prisma.activity.delete({ where: { id: current.id } });
-
-  await recordAudit({
-    actorId: BigInt(user.id),
-    action: "activity.delete",
-    entityType: "Activity",
-    entityId: current.id,
-    details: { title: current.title },
-  });
-
-  return successResponse({ id: String(current.id) });
 }
