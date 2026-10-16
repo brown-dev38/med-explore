@@ -62,8 +62,10 @@ type ConfirmActionState = {
 
 export function AcademicYearManager({
   initialYears,
+  canDelete = false,
 }: {
   initialYears: AcademicYearDto[];
+  canDelete?: boolean;
 }) {
   const router = useRouter();
   const [years, setYears] = useState(initialYears);
@@ -220,6 +222,7 @@ export function AcademicYearManager({
   }
 
   function promptDelete(year: AcademicYearDto) {
+    if (!canDelete) return;
     setConfirmState({
       open: true,
       title: `ยืนยันการลบปีการศึกษา ${year.code}`,
@@ -347,9 +350,9 @@ export function AcademicYearManager({
                             เปิดใหม่
                           </Button>
                         )}
-                        <Button variant="destructive" size="sm" onClick={() => promptDelete(year)} disabled={busy}>
+                        {canDelete && <Button variant="destructive" size="sm" onClick={() => promptDelete(year)} disabled={busy}>
                           <Trash2 className="size-3.5" />ลบ
-                        </Button>
+                        </Button>}
                       </div>
                     </TableCell>
                   </TableRow>

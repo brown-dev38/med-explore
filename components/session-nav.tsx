@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
-import { dashboardPathFor } from "@/lib/permissions";
+import { dashboardPathFor, hasRole, ROLES } from "@/lib/permissions";
 import { LogoutButton } from "./logout-button";
 
 export async function SessionNav() {
@@ -44,7 +44,7 @@ export async function SessionNav() {
         <Link href={dashboardPathFor(user)} className={linkClass}>
           แดชบอร์ด
         </Link>
-        <Link href="/dashboard/activities" className={linkClass}>
+        <Link href={hasRole(user, ROLES.ADMIN) ? "/admin/activities" : hasRole(user, ROLES.ORGANIZER) ? "/organizer/activities" : "/dashboard/activities"} className={linkClass}>
           กิจกรรม
         </Link>
         <Link href="/profile" className={linkClass}>

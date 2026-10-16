@@ -29,6 +29,7 @@ const ROLES: { name: string; description: string; permissions: string[] }[] = [
     name: "ORGANIZER",
     description: "ผู้จัดกิจกรรม",
     permissions: [
+      "academic_year.manage",
       "activity.manage",
       "attendance.record",
       "participation.review",

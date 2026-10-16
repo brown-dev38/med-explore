@@ -36,6 +36,8 @@ export function hasPermission(
   code: PermissionCode,
 ): boolean {
   if (hasRole(principal, ROLES.ADMIN)) return true;
+  // This role capability also applies to sessions created before it was granted.
+  if (code === PERMISSIONS.ACADEMIC_YEAR_MANAGE && hasRole(principal, ROLES.ORGANIZER)) return true;
   return Boolean(principal?.permissions?.includes(code));
 }
 
@@ -43,8 +45,17 @@ export function canAccessAdmin(principal: Principal): boolean {
   return hasRole(principal, ROLES.ADMIN);
 }
 
+export function canViewStudents(principal: Principal): boolean {
+  return hasRole(principal, ROLES.ADMIN) || hasRole(principal, ROLES.ORGANIZER);
+}
+
+export function canManageGreenStars(principal: Principal): boolean {
+  return hasRole(principal, ROLES.ADMIN) || hasRole(principal, ROLES.ORGANIZER);
+}
+
 export function dashboardPathFor(principal: Principal): string {
   if (hasRole(principal, ROLES.ADMIN)) return "/admin";
+  if (hasRole(principal, ROLES.ORGANIZER)) return "/organizer";
   if (hasPermission(principal, PERMISSIONS.ACTIVITY_MANAGE)) {
     return "/organizer/activities";
   }

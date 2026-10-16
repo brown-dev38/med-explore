@@ -8,7 +8,7 @@ export const metadata = {
 export default function StudentProfilePage() {
   return (
     <Suspense fallback={<div className="text-sm text-slate-500">กำลังโหลด...</div>}>
-      <ProfileView />
+      <ProfileView studentDashboard />
     </Suspense>
   );
 }

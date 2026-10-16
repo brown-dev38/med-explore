@@ -26,10 +26,10 @@ export function selectStudentYear(years: StudentYearOption[], requestedId?: stri
   return years.find((year) => year.status === "ACTIVE") ?? years[0] ?? null;
 }
 
-export function studentActivitiesHref(yearId: string, filter: StudentActivityFilter = "all") {
+export function studentActivitiesHref(yearId: string, filter: StudentActivityFilter = "all", basePath = "/dashboard") {
   const params = new URLSearchParams({ academicYearId: yearId });
   if (filter !== "all") params.set("filter", filter);
-  return `/dashboard/year-activities?${params}`;
+  return `${basePath}/year-activities?${params}`;
 }
 
 export function studentActivityWhere(

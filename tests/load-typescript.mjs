@@ -7,7 +7,7 @@ const moduleRequire = createRequire(import.meta.url);
 export function loadTypeScript(relativePath, mocks = {}) {
   const source = fs.readFileSync(new URL(relativePath, import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true },
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
   const loadedModule = { exports: {} };
   new Function("require", "module", "exports", compiled)(

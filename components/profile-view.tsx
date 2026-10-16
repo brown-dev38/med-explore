@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/dal";
+import { getStudentDashboardContext, type StudentTarget } from "@/lib/student-dashboard";
 import { toUserDto } from "@/lib/users";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -19,8 +20,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export async function ProfileView() {
-  const sessionUser = await requireAuth();
+export async function ProfileView({ target, studentDashboard = false }: { target?: StudentTarget; studentDashboard?: boolean }) {
+  const sessionUser = target || studentDashboard
+    ? (await getStudentDashboardContext(target)).user
+    : await requireAuth();
 
   const user = await prisma.user.findUnique({
     where: { id: BigInt(sessionUser.id) },
@@ -55,7 +58,7 @@ export async function ProfileView() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          โปรไฟล์ของฉัน
+          {target ? "โปรไฟล์ของนิสิต" : "โปรไฟล์ของฉัน"}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
           ข้อมูลบัญชีผู้ใช้งานและบทบาทในระบบ MedExplore Star

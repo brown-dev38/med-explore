@@ -74,6 +74,7 @@ export async function getHelperCandidates(
   const where: Prisma.UserWhereInput = {
     id: { notIn: excludedIds },
     isActive: true,
+    userRoles: { some: { role: { name: "STUDENT" } } },
   };
 
   if (q) {
@@ -439,6 +440,6 @@ export async function getStudentStarSummary(
     academicYearCode: activeYear ? activeYear.code : null,
     targetTier,
     activitiesCount,
-    helpersCount,
+    helpersCount: helpersCount + stars.filter((star) => star.starType === "GREEN" && star.points > 0 && star.helperAssignmentId === null && star.participationId === null && star.redemptionId === null).length,
   };
 }

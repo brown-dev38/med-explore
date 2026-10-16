@@ -39,6 +39,15 @@ test("drill-down links preserve the selected year and requested filter", () => {
   }
 });
 
+test("staff drill-down links retain the selected student, workspace, historical year and filter", () => {
+  for (const area of ["admin", "organizer"]) {
+    const url = new URL(studentActivitiesHref("1", "missed", `/${area}/students/42/dashboard`), "https://example.test");
+    assert.equal(url.pathname, `/${area}/students/42/dashboard/year-activities`);
+    assert.equal(url.searchParams.get("academicYearId"), "1");
+    assert.equal(url.searchParams.get("filter"), "missed");
+  }
+});
+
 // Evaluate the Prisma operators used by these filters against business fixtures.
 function matches(record, where) {
   return Object.entries(where).every(([key, expected]) => {

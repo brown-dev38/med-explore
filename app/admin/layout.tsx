@@ -9,7 +9,9 @@ const adminNav: DashboardNavItem[] = [
   { href: "/admin", label: "ภาพรวม", icon: "dashboard", exact: true },
   { href: "/admin/academic-years", label: "ปีการศึกษา", icon: "calendar" },
   { href: "/admin/users", label: "ผู้ใช้งาน", icon: "users" },
+  { href: "/admin/students", label: "ข้อมูลนิสิต", icon: "users" },
   { href: "/admin/activities", label: "กิจกรรม", icon: "activities" },
+  { href: "/admin/green-stars", label: "ดาวสีเขียว / นิสิตช่วยงาน", icon: "list" },
   { href: "/admin/profile", label: "โปรไฟล์", icon: "profile" },
 ];
 

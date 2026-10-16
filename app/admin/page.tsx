@@ -90,6 +90,12 @@ async function AdminHomeContent() {
 
   const shortcuts = [
     {
+      href: "/admin/green-stars",
+      title: "ดาวสีเขียว / นิสิตช่วยงาน",
+      description: "มอบหมายผู้ช่วยงานและยืนยันให้ดาวสีเขียว",
+      icon: Users,
+    },
+    {
       href: "/admin/academic-years",
       title: "จัดการปีการศึกษา",
       description: "สร้าง เปิดใช้งาน และปิดรอบปีการศึกษาสำหรับการสะสมดาว",

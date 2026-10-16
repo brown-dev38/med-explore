@@ -53,9 +53,19 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  if (isDashboardArea) {
+    if (roles.includes(ROLES.ADMIN) || roles.includes(ROLES.ORGANIZER)) {
+      return NextResponse.redirect(new URL(dashboardPathFor(principal), request.url));
+    }
+    if (!roles.includes(ROLES.STUDENT)) {
+      return NextResponse.redirect(new URL("/forbidden", request.url));
+    }
+  }
+
   if (isOrganizerArea) {
     const allowed =
       roles.includes(ROLES.ADMIN) ||
+      roles.includes(ROLES.ORGANIZER) ||
       permissions.includes(PERMISSIONS.ACTIVITY_MANAGE);
     if (!allowed) {
       return NextResponse.redirect(new URL("/forbidden", request.url));

@@ -6,6 +6,7 @@ import {
   removeHelper,
 } from "@/lib/helpers";
 import { helperUpdateSchema } from "@/lib/validation";
+import { prisma } from "@/lib/prisma";
 
 type RouteContext = {
   params: Promise<{ id: string; helperId: string }>;
@@ -18,9 +19,14 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     return errorResponse("ไม่มีสิทธิ์จัดการผู้ช่วยงาน", 403);
   }
 
-  const { helperId } = await params;
+  const { id, helperId } = await params;
+  const activityId = parseId(id);
   const parsedHelperId = parseId(helperId);
-  if (!parsedHelperId) return errorResponse("ไม่พบข้อมูลผู้ช่วยงาน", 404);
+  if (!activityId || !parsedHelperId) return errorResponse("ไม่พบข้อมูลผู้ช่วยงาน", 404);
+  const belongsToActivity = await prisma.helperAssignment.findFirst({
+    where: { id: parsedHelperId, activityId }, select: { id: true },
+  });
+  if (!belongsToActivity) return errorResponse("ไม่พบข้อมูลผู้ช่วยงาน", 404);
 
   const json = await req.json().catch(() => null);
   const parsed = helperUpdateSchema.safeParse(json);
@@ -51,9 +57,14 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
     return errorResponse("ไม่มีสิทธิ์ลบผู้ช่วยงาน", 403);
   }
 
-  const { helperId } = await params;
+  const { id, helperId } = await params;
+  const activityId = parseId(id);
   const parsedHelperId = parseId(helperId);
-  if (!parsedHelperId) return errorResponse("ไม่พบข้อมูลผู้ช่วยงาน", 404);
+  if (!activityId || !parsedHelperId) return errorResponse("ไม่พบข้อมูลผู้ช่วยงาน", 404);
+  const belongsToActivity = await prisma.helperAssignment.findFirst({
+    where: { id: parsedHelperId, activityId }, select: { id: true },
+  });
+  if (!belongsToActivity) return errorResponse("ไม่พบข้อมูลผู้ช่วยงาน", 404);
 
   try {
     await removeHelper(parsedHelperId, BigInt(user.id));

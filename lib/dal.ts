@@ -7,6 +7,7 @@ import {
   canAccessAdmin,
   hasPermission,
   hasRole,
+  ROLES,
   type PermissionCode,
   type RoleName,
 } from "@/lib/permissions";
@@ -64,5 +65,11 @@ export async function requireRole(role: RoleName): Promise<SessionUser> {
 export async function requireAdminAccess(): Promise<SessionUser> {
   const user = await requireAuth();
   if (!canAccessAdmin(user)) redirect("/forbidden");
+  return user;
+}
+
+export async function requireOrganizerAccess(): Promise<SessionUser> {
+  const user = await requireAuth();
+  if (!hasRole(user, ROLES.ADMIN) && !hasRole(user, ROLES.ORGANIZER)) redirect("/forbidden");
   return user;
 }

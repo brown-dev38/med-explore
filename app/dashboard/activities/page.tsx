@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/dal";
+import { getStudentDashboardContext } from "@/lib/student-dashboard";
 import { toActivityDto } from "@/lib/activities";
 import type { ActivityListItem } from "@/types/activity";
 import { ActivitiesBrowser } from "@/components/activities-browser";
@@ -18,7 +18,7 @@ export default function DashboardActivitiesPage() {
 }
 
 async function DashboardActivitiesContent() {
-  const user = await requireAuth();
+  const { user } = await getStudentDashboardContext();
 
   const activities = await prisma.activity.findMany({
     where: { status: "PUBLISHED" },

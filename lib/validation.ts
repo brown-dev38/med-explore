@@ -146,3 +146,13 @@ export const helperUpdateSchema = z.object({
   description: z.string().trim().max(1000).nullable().optional(),
 });
 
+const positiveDatabaseId = z.string().regex(/^[1-9]\d{0,18}$/, "รหัสไม่ถูกต้อง")
+  .refine((value) => /^[1-9]\d{0,18}$/.test(value) && BigInt(value) <= BigInt("9223372036854775807"), "รหัสไม่ถูกต้อง");
+
+export const greenWorkAwardSchema = z.object({
+  userId: positiveDatabaseId,
+  academicYearId: positiveDatabaseId,
+  description: z.string().trim().min(1, "กรุณาระบุงานที่นิสิตช่วยเหลือ").max(1000),
+  requestId: z.uuid(),
+});
+

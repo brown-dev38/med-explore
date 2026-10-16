@@ -6,6 +6,10 @@ import {
 import { DashboardUser } from "@/components/dashboard-user";
 
 const organizerNav: DashboardNavItem[] = [
+  { href: "/organizer", label: "ภาพรวม", icon: "dashboard", exact: true },
+  { href: "/organizer/academic-years", label: "ปีการศึกษา", icon: "calendar" },
+  { href: "/organizer/students", label: "ข้อมูลนิสิต", icon: "users" },
+  { href: "/organizer/green-stars", label: "ดาวสีเขียว / นิสิตช่วยงาน", icon: "list" },
   {
     href: "/organizer/activities",
     label: "กิจกรรมที่จัด",

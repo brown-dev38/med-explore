@@ -11,7 +11,7 @@ const STATUS_LABEL = { ACTIVE: "กำลังใช้งาน", CLOSED: "ป
 export function StudentYearSelector({ years, selectedId, basePath = "/dashboard", filter }: {
   years: StudentYearOption[];
   selectedId: string | null;
-  basePath?: "/dashboard" | "/dashboard/upcoming" | "/dashboard/year-activities";
+  basePath?: string;
   filter?: StudentActivityFilter;
 }) {
   const id = useId();

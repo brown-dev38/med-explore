@@ -63,9 +63,15 @@ export async function POST(req: Request, { params }: RouteContext) {
         return errorResponse(parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง", 400);
       }
 
-      const userIds = parsed.data.userIds
-        .map(parseId)
-        .filter((id): id is bigint => id !== null);
+      const parsedIds = parsed.data.userIds.map(parseId);
+      if (parsedIds.some((id) => id === null || id <= BigInt(0) || id > BigInt("9223372036854775807"))) {
+        return errorResponse("รหัสนิสิตไม่ถูกต้อง", 400);
+      }
+      const userIds = [...new Set(parsedIds as bigint[])];
+      const students = await prisma.user.count({
+        where: { id: { in: userIds }, isActive: true, userRoles: { some: { role: { name: "STUDENT" } } } },
+      });
+      if (students !== userIds.length) return errorResponse("เลือกได้เฉพาะนิสิตที่เปิดใช้งานเท่านั้น", 400);
 
       const result = await bulkAssignHelpers(
         activityId,
@@ -83,7 +89,12 @@ export async function POST(req: Request, { params }: RouteContext) {
     }
 
     const targetUserId = parseId(parsed.data.userId);
-    if (!targetUserId) return errorResponse("ไม่พบนิสิต", 400);
+    if (!targetUserId || targetUserId > BigInt("9223372036854775807")) return errorResponse("ไม่พบนิสิต", 400);
+    const student = await prisma.user.findFirst({
+      where: { id: targetUserId, isActive: true, userRoles: { some: { role: { name: "STUDENT" } } } },
+      select: { id: true },
+    });
+    if (!student) return errorResponse("เลือกได้เฉพาะนิสิตที่เปิดใช้งานเท่านั้น", 400);
 
     // ตรวจสอบว่ามีผู้ช่วยงานคนนี้แล้วหรือไม่
     const existing = await prisma.helperAssignment.findUnique({
@@ -108,6 +119,9 @@ export async function POST(req: Request, { params }: RouteContext) {
 
     return successResponse(helper, 201);
   } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "P2002") {
+      return errorResponse("นิสิตคนนี้ได้รับการมอบหมายเป็นผู้ช่วยงานแล้ว", 409);
+    }
     console.error("Assign helper error:", error);
     const msg = error instanceof Error ? error.message : "เกิดข้อผิดพลาดในการมอบหมายผู้ช่วยงาน";
     return errorResponse(msg, 500);
