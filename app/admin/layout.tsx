@@ -13,6 +13,8 @@ const adminNav: DashboardNavItem[] = [
   { href: "/admin/activities", label: "กิจกรรม", icon: "activities" },
   { href: "/admin/green-stars", label: "ดาวสีเขียว / นิสิตช่วยงาน", icon: "list" },
   { href: "/admin/profile", label: "โปรไฟล์", icon: "profile" },
+  { href: "/admin/rewards", label: "จัดการของรางวัล", icon: "rewards" },
+  { href: "/admin/redemptions", label: "คำขอแลกรางวัล", icon: "list" },
 ];
 
 export default function AdminLayout({

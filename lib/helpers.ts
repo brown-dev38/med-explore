@@ -368,13 +368,6 @@ export async function removeHelper(
   });
 }
 
-const REWARD_TIERS = [
-  { targetStars: 3, name: "สมุดหรือชุดเครื่องเขียน" },
-  { targetStars: 6, name: "ชุดอุปกรณ์การเรียน" },
-  { targetStars: 9, name: "กระเป๋าผ้าหรือแก้วน้ำ" },
-  { targetStars: 12, name: "ชุดของรางวัลโครงการ" },
-];
-
 export async function getStudentStarSummary(
   userId: bigint,
 ): Promise<StudentStarSummaryDto> {
@@ -382,11 +375,11 @@ export async function getStudentStarSummary(
   const activeYear = await prisma.academicYear.findFirst({
     where: { status: "ACTIVE" },
     orderBy: { startsOn: "desc" },
-  });
+  }) ?? await prisma.academicYear.findFirst({ orderBy: { startsOn: "desc" } });
 
   const yearFilter = activeYear ? { academicYearId: activeYear.id } : {};
 
-  const [stars, activitiesCount, helpersCount] = await Promise.all([
+  const [stars, activitiesCount, helpersCount, rewards, reservations] = await Promise.all([
     prisma.starTransaction.findMany({
       where: {
         userId,
@@ -407,6 +400,12 @@ export async function getStudentStarSummary(
         ...(activeYear ? { activity: { academicYearId: activeYear.id } } : {}),
       },
     }),
+    activeYear ? prisma.rewardTier.findMany({
+      omit: { imageData: true },
+      where: { academicYearId: activeYear.id, isActive: true, deletedAt: null, OR: [{ stockQuantity: null }, { stockQuantity: { gt: 0 } }] },
+      orderBy: [{ costPoints: "asc" }, { id: "asc" }],
+    }) : Promise.resolve([]),
+    prisma.starTransaction.aggregate({ where: { userId, ...yearFilter, status: "PENDING", redemptionId: { not: null }, points: { lt: 0 } }, _sum: { points: true } }),
   ]);
 
   const yellowStars = stars
@@ -419,24 +418,17 @@ export async function getStudentStarSummary(
 
   const totalStars = yellowStars + greenStars;
 
-  // คำนวณระดับรางวัลถัดไป
-  const nextTarget = REWARD_TIERS.find((tier) => tier.targetStars > totalStars);
-  const targetTier = nextTarget
-    ? {
-        name: nextTarget.name,
-        targetStars: nextTarget.targetStars,
-        remaining: Math.max(0, nextTarget.targetStars - totalStars),
-      }
-    : {
-        name: REWARD_TIERS[REWARD_TIERS.length - 1].name,
-        targetStars: 12,
-        remaining: 0,
-      };
+  const reservedStars = Math.max(0, -(reservations._sum.points ?? 0));
+  const availableStars = Math.max(0, stars.reduce((sum, star) => sum + star.points, 0) - reservedStars);
+  const nextTarget = rewards.find((reward) => reward.costPoints > availableStars) ?? rewards.at(-1);
+  const targetTier = nextTarget ? { name: nextTarget.name, targetStars: nextTarget.costPoints, remaining: Math.max(0, nextTarget.costPoints - availableStars) } : null;
 
   return {
     yellowStars,
     greenStars,
     totalStars,
+    availableStars,
+    reservedStars,
     academicYearCode: activeYear ? activeYear.code : null,
     targetTier,
     activitiesCount,

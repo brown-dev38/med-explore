@@ -95,6 +95,8 @@ export type StudentStarSummaryDto = {
   yellowStars: number;
   greenStars: number;
   totalStars: number;
+  availableStars: number;
+  reservedStars: number;
   academicYearCode: string | null;
   targetTier: {
     name: string;

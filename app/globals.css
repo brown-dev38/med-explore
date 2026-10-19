@@ -7,7 +7,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans), "Leelawadee UI", Tahoma, sans-serif;
+  --font-sans: var(--font-inter), var(--font-kanit), "Leelawadee UI", Tahoma, sans-serif;
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -122,11 +122,8 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
     line-height: 1.65;
-  }
-  html {
-    @apply font-sans;
   }
   button:not(:disabled), [role="button"]:not([aria-disabled="true"]) {
     cursor: pointer;

@@ -38,6 +38,7 @@ function view(name, readOnly, area = "admin") {
     "@/lib/attendance-calculation": loadTypeScript("../lib/attendance-calculation.ts"),
     "@/lib/student-activity-filters": loadTypeScript("../lib/student-activity-filters.ts"),
     "@/components/student-year-selector": { StudentYearSelector: "year-selector" },
+    "@/components/reward-goals": { RewardGoals: "reward-goals" },
     "@/components/ui/button": { Button: "button" },
     "@/components/ui/badge": { Badge: "badge" },
     "@/components/ui/card": Object.fromEntries(["Card", "CardContent", "CardHeader", "CardTitle", "CardDescription", "CardFooter"].map((key) => [key, "div"])),

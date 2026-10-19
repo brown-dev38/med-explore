@@ -34,6 +34,7 @@ const ROLES: { name: string; description: string; permissions: string[] }[] = [
       "attendance.record",
       "participation.review",
       "star.approve",
+      "reward.manage",
       "survey.manage",
     ],
   },

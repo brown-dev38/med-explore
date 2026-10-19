@@ -19,6 +19,7 @@ import { formatThaiDateTime } from "@/lib/datetime";
 import { getStudentYearContext } from "@/lib/student-academic-years";
 import { isIncompleteCompletedParticipation, studentActivitiesHref, studentActivityWhere, type StudentYearPageProps } from "@/lib/student-activity-filters";
 import { StudentYearSelector } from "@/components/student-year-selector";
+import { RewardGoals } from "@/components/reward-goals";
 import { totalAttendanceMinutes } from "@/lib/attendance-calculation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -121,7 +122,7 @@ async function StudentDashboardContent({ searchParams, target }: StudentYearPage
   const stats = [
     {
       label: "ดาวรวมสะสม", value: totalStars,
-      hint: `เหลือง ${yellowStars} + เขียว ${greenStars} ดาว (แลกของรางวัล)`, href: `${basePath}/my-activities`,
+      hint: `ได้รับปีนี้: เหลือง ${yellowStars} + เขียว ${greenStars} ดาว`, href: !readOnly && selectedYear ? `/dashboard/rewards?academicYearId=${selectedYear.id}` : `${basePath}/my-activities`,
       icon: Sparkles, color: "text-amber-500", bg: "bg-amber-500/10",
     },
     {
@@ -202,6 +203,8 @@ async function StudentDashboardContent({ searchParams, target }: StudentYearPage
       </div>
 
       <StudentYearSelector years={years} selectedId={selectedYear?.id ?? null} basePath={basePath} />
+
+      {!readOnly && selectedYear && <RewardGoals userId={user.id} academicYearId={selectedYear.id} />}
 
       <Card className="border-primary/20">
         <CardHeader>

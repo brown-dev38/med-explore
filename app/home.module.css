@@ -1,0 +1,228 @@
+.home {
+  --home-ink: #173e35;
+  --home-muted: #66766d;
+  --home-line: #dfe5dc;
+  flex: 1;
+  color-scheme: light;
+  color: var(--home-ink);
+  background: #fafbf6;
+}
+.home a { text-decoration: none; }
+.home a:focus-visible { outline: 3px solid #b38a34; outline-offset: 5px; border-radius: 5px; }
+.home section[id] { scroll-margin-top: 30px; }
+.skipLink { position: fixed; z-index: 50; left: 16px; top: -100px; padding: 12px 20px; color: white; background: #173e35; }
+.skipLink:focus { top: 16px; }
+.header { border-bottom: 1px solid var(--home-line); }
+.headerInner { max-width: 1240px; min-height: 100px; margin: auto; padding: 20px 40px; display: flex; align-items: center; justify-content: space-between; gap: 28px; }
+.brand { display: inline-flex; align-items: center; gap: 12px; color: var(--home-ink); font-size: 19px; font-weight: 700; white-space: nowrap; line-height: 1.4; }
+.brandIcon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; background: #214e40; color: #ebce80; }
+.brand small { display: block; margin-top: 4px; color: var(--home-muted); font-size: 11px; font-weight: 400; }
+.sectionNav { display: flex; gap: 26px; font-size: 13px; }
+.sectionNav a { color: var(--home-muted); transition: color .2s; }
+.sectionNav a:hover { color: #173e35; }
+.sessionNav { font-size: 13px; }
+.sessionNav > div { flex-wrap: wrap; justify-content: flex-end; }
+.sessionNav a[href="/register"] { background: #214e40; border-radius: 9px; padding: 11px 18px; }
+.sessionNav a[href="/register"]:hover { background: #32634e; }
+.sessionNav a:not([href="/register"]) { color: #355c4a; }
+.sessionNav nav { flex-wrap: wrap; justify-content: flex-end; }
+.sessionNav p:first-child { color: var(--home-ink); }
+.sessionNav p:last-child { color: var(--home-muted); }
+.sessionNav button { color: var(--home-ink); background: #fafbf6; border-color: var(--home-line); }
+.navLoading { display: block; min-width: 150px; color: var(--home-muted); text-align: right; }
+.hero { display: grid; grid-template-columns: 1.12fr 1fr; gap: 45px; max-width: 1240px; margin: auto; padding: 58px 40px 44px; align-items: center; }
+.eyebrow { display: inline-flex; gap: 9px; align-items: center; color: #59745c; font-size: 12px; font-weight: 500; }
+.eyebrow > span { width: 6px; height: 6px; background: #719565; border-radius: 50%; }
+.programName { margin-top: 22px; font-size: 17px; font-weight: 600; letter-spacing: -.4px; }
+.hero h1 { font-size: clamp(46px, 4.9vw, 68px); font-weight: 500; letter-spacing: -1.9px; line-height: 1.35; margin: 12px 0 22px; }
+.titleAccent { display: inline-block; position: relative; color: #618159; }
+.titleAccent svg { position: absolute; bottom: -4px; left: 0; width: 100%; height: 12px; fill: none; stroke: #d6b85f; stroke-width: 4px; stroke-linecap: round; }
+.heroDescription { font-size: 15px; line-height: 1.95; color: var(--home-muted); }
+.heroActions { display: flex; align-items: center; flex-wrap: wrap; gap: 24px; margin-top: 32px; }
+.primaryButton, .lightButton { display: inline-flex; align-items: center; justify-content: center; gap: 16px; padding: 15px 23px; border-radius: 10px; font-size: 14px; font-weight: 500; transition: background .2s, transform .2s; }
+.primaryButton { color: white; background: #214e40; box-shadow: 0 5px 12px #173e3510; }
+.primaryButton:hover { background: #32634e; transform: translateY(-2px); }
+.textButton { display: inline-flex; gap: 10px; align-items: center; color: var(--home-ink); font-size: 13px; font-weight: 500; }
+.textButton:hover { text-decoration: underline; text-underline-offset: 5px; }
+.heroNotes { display: flex; flex-wrap: wrap; gap: 10px 20px; color: #52694d; font-size: 11px; margin-top: 24px; list-style: none; padding: 0; }
+.heroNotes li { display: inline-flex; align-items: center; gap: 6px; }
+.heroNotes svg { flex-shrink: 0; color: #628358; }
+.heroArt { position: relative; min-width: 0; padding: 26px 27px; border-radius: 28px; background: #214e40; color: #edf1dd; overflow: hidden; box-shadow: 0 20px 45px -30px #173e3560; }
+.artTopline { display: flex; align-items: center; justify-content: space-between; color: #c2cfb6; }
+.artTopline > span { display: flex; align-items: center; gap: 7px; font-size: 8px; letter-spacing: 1.9px; }
+.artTopline > span > span { width: 5px; height: 5px; border-radius: 50%; background: #d4d88e; }
+.orbitScene { position: relative; height: 320px; }
+.orbitOuter, .orbitInner { position: absolute; border-radius: 50%; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-25deg); }
+.orbitOuter { width: 345px; height: 265px; border: 1px solid #c2cfb62b; }
+.orbitInner { width: 260px; height: 260px; border: 1px dashed #c2cfb631; }
+.mainStar { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-10deg); width: 220px; height: 235px; filter: drop-shadow(0 18px 17px #0c241e60); }
+.tinyStarOne, .tinyStarTwo { position: absolute; color: #d6d79b; }
+.tinyStarOne { top: 28px; right: 35px; transform: rotate(15deg); }
+.tinyStarTwo { bottom: 27px; left: 36px; }
+.orbitDotOne, .orbitDotTwo { position: absolute; width: 7px; height: 7px; border-radius: 50%; background: #b5c49a; }
+.orbitDotOne { left: 37px; top: 90px; }
+.orbitDotTwo { bottom: 65px; right: 27px; width: 5px; height: 5px; }
+.floatingLabel { position: absolute; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid #e3ead6; border-radius: 12px; background: #fafbf4; box-shadow: 0 9px 22px #0c241e25; color: #214e40; font-size: 12px; font-weight: 500; }
+.floatingLabel small { display: block; margin-top: 2px; font-size: 10px; color: #7b8574; font-weight: 400; }
+.joinLabel { top: 42px; left: -8px; transform: rotate(-6deg); }
+.helpLabel { bottom: 20px; right: -6px; transform: rotate(5deg); }
+.yellowIcon, .greenIcon { width: 35px; height: 35px; display: grid; place-items: center; border-radius: 10px; }
+.yellowIcon { background: #f8edc4; color: #b88a26; }
+.greenIcon { background: #e4ecdd; color: #537b4f; }
+.artCaption { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; }
+.artCaption > span:first-child { font-size: 20px; line-height: 1.5; letter-spacing: -.7px; }
+.artCaption strong { font-weight: 500; color: #e4cf8c; }
+.captionBadge { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #d3dcba45; border-radius: 30px; padding: 7px 10px; font-size: 9px; white-space: nowrap; color: #d4daba; }
+.scheduleSection { max-width: 1240px; margin: auto; padding: 0 40px 56px; }
+.schedule { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--home-line); border-radius: 16px; background: #f1f3e9; padding: 24px 10px; }
+.schedule > div { display: grid; grid-template-columns: 32px 1fr; column-gap: 14px; align-items: center; padding: 0 25px; border-left: 1px solid #d9dfce; }
+.schedule > div:first-child { border-left: 0; }
+.schedule svg { grid-row: 1 / 3; color: #65805c; }
+.schedule dt { font-size: 11px; color: var(--home-muted); margin-bottom: 3px; }
+.schedule dd { font-size: 15px; font-weight: 500; }
+.stepsSection { max-width: 1240px; margin: auto; padding: 0 40px 72px; }
+.sectionHeading { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
+.kicker { color: #738269; font-size: 9px; letter-spacing: 1.8px; font-weight: 600; margin-bottom: 11px; }
+.sectionHeading h2, .rewardsCopy h2 { font-size: 28px; font-weight: 500; line-height: 1.5; letter-spacing: -.7px; }
+.headingNote { display: inline-flex; align-items: center; gap: 13px; font-size: 11px; color: var(--home-muted); padding-bottom: 5px; }
+.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 32px; }
+.step { padding: 0 32px; border-left: 1px solid var(--home-line); }
+.step:first-child { padding-left: 0; border: 0; }
+.step:last-child { padding-right: 0; }
+.stepTop { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
+.stepIcon { display: grid; place-items: center; width: 50px; height: 50px; background: #edf0e6; border: 1px solid #e2e7d9; border-radius: 14px; }
+.stepNumber { color: #c0cabc; font-size: 30px; font-weight: 300; letter-spacing: -1px; }
+.step h3 { font-size: 17px; font-weight: 500; margin-bottom: 8px; }
+.step p { font-size: 13px; color: var(--home-muted); line-height: 1.9; max-width: 285px; }
+.rewardsSection { display: grid; grid-template-columns: 1fr 1.65fr; gap: 40px; max-width: 1160px; margin: 0 auto 64px; padding: 38px 40px; align-items: center; border: 1px solid #e8dfbd; border-radius: 22px; background: #f6f0dc; }
+.rewardsCopy > p:last-child { color: #6e725d; font-size: 13px; line-height: 1.9; margin-top: 14px; max-width: 260px; }
+.rewardJourney { min-width: 0; }
+.rewardSteps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 0; margin: 0; list-style: none; }
+.rewardSteps li { position: relative; text-align: center; }
+.rewardSteps li:not(:last-child)::after { content: ""; position: absolute; left: calc(50% + 38px); right: calc(-50% + 38px); top: 31px; border-top: 1px dashed #c7bb8b; }
+.rewardIcon { display: grid; place-items: center; width: 64px; height: 64px; margin: 0 auto; border: 1px solid #dfd1a0; border-radius: 50%; background: #faf6e8; color: #8d7839; }
+.rewardSteps li:nth-child(2) .rewardIcon { background: #eddda3; border-color: #d2bb6b; color: #92711e; }
+.rewardNumber { display: block; margin-top: 15px; font-size: 9px; letter-spacing: 1px; color: #8b815e; }
+.rewardSteps h3 { margin-top: 4px; font-size: 15px; font-weight: 500; }
+.rewardSteps p { margin-top: 4px; font-size: 11px; color: #767760; }
+.rewardNote { text-align: center; font-size: 10px; line-height: 1.8; color: #7b7b63; margin-top: 24px; }
+.cta { position: relative; overflow: hidden; max-width: 1160px; margin: 0 auto 44px; border-radius: 22px; padding: 42px 46px; background: #214e40; color: #f3f2df; display: flex; align-items: center; justify-content: space-between; gap: 28px; }
+.cta > div, .cta > a { position: relative; z-index: 1; }
+.ctaKicker { display: flex; align-items: center; gap: 8px; font-size: 9px; letter-spacing: 1.5px; color: #d9d6a6; margin-bottom: 13px; }
+.cta h2 { font-size: 29px; font-weight: 500; line-height: 1.5; letter-spacing: -.6px; }
+.cta p:last-child { font-size: 13px; color: #c0cdb6; margin-top: 10px; }
+.lightButton { color: #214e40; background: #f3edcf; white-space: nowrap; }
+.lightButton:hover { background: #fff8dc; transform: translateY(-2px); }
+.ctaStar { position: absolute; right: 210px; bottom: -70px; color: #c5d6aa25; transform: rotate(15deg); }
+.footer { max-width: 1240px; margin: auto; padding: 0 40px 28px; display: flex; align-items: center; gap: 20px; color: #7a8474; font-size: 11px; }
+.footer > span { display: flex; align-items: center; gap: 7px; color: #45634d; font-size: 12px; font-weight: 600; }
+.footer > span svg { color: #a5ad71; }
+.footer a { margin-left: auto; color: #65775d; }
+@media (min-width: 1600px) { .hero { padding-top: 76px; padding-bottom: 56px; } }
+@media (max-width: 1100px) {
+  .sectionNav { display: none; }
+  .hero { gap: 28px; }
+  .hero h1 { font-size: 57px; }
+  .heroActions { gap: 18px; }
+  .heroArt { padding: 23px; }
+  .orbitScene { height: 310px; }
+  .artCaption > span:first-child { font-size: 18px; }
+  .captionBadge { font-size: 8px; padding: 6px 8px; }
+  .schedule > div { padding: 0 16px; column-gap: 10px; }
+  .schedule dd { font-size: 13px; }
+  .rewardsSection { margin-left: 40px; margin-right: 40px; padding: 32px; gap: 25px; }
+  .cta { margin-left: 40px; margin-right: 40px; }
+}
+@media (max-width: 800px) {
+  .headerInner { padding: 20px 24px; min-height: 88px; gap: 20px; flex-wrap: wrap; }
+  .brand { font-size: 17px; }
+  .sessionNav { margin-left: auto; }
+  .hero { grid-template-columns: 1fr; padding: 40px 24px; gap: 36px; }
+  .heroCopy { max-width: 540px; }
+  .hero h1 { font-size: clamp(48px, 8.2vw, 64px); }
+  .heroArt { max-width: 540px; width: 100%; justify-self: center; padding: 25px 30px; }
+  .orbitScene { height: 325px; }
+  .joinLabel { left: 12px; }
+  .helpLabel { right: 12px; }
+  .artCaption > span:first-child { font-size: 22px; }
+  .stepsSection { padding: 0 24px 50px; }
+  .headingNote { display: none; }
+  .scheduleSection { padding: 0 24px 44px; }
+  .schedule { padding: 20px 6px; }
+  .schedule > div { grid-template-columns: 1fr; padding: 0 16px; }
+  .schedule svg { grid-row: auto; margin-bottom: 12px; width: 23px; }
+  .schedule dd { font-size: 12px; }
+  .sectionHeading h2 { font-size: 25px; }
+  .step { padding: 0 20px; }
+  .step h3 { font-size: 15px; }
+  .step p { font-size: 12px; }
+  .rewardsSection { grid-template-columns: 1fr; margin: 0 24px 44px; padding: 30px; gap: 28px; }
+  .rewardsCopy h2 br { display: none; }
+  .rewardsCopy > p:last-child { max-width: none; margin-top: 10px; }
+  .cta { margin: 0 24px 30px; padding: 32px; flex-direction: column; align-items: flex-start; gap: 25px; }
+  .cta h2 { font-size: 28px; }
+  .ctaStar { right: -30px; }
+  .footer { padding: 0 24px 26px; flex-wrap: wrap; gap: 8px 16px; }
+}
+@media (max-width: 480px) {
+  .headerInner { padding: 17px 20px; gap: 18px; }
+  .brandIcon { width: 36px; height: 36px; border-radius: 11px; }
+  .brand { font-size: 15px; gap: 8px; }
+  .brand small { font-size: 9px; }
+  .sessionNav { width: 100%; padding-top: 12px; border-top: 1px solid var(--home-line); }
+  .sessionNav > div { justify-content: space-between; }
+  .hero { padding: 32px 20px; }
+  .hero h1 { font-size: clamp(44px, 12.5vw, 57px); letter-spacing: -1.2px; margin-top: 10px; }
+  .eyebrow { font-size: 11px; }
+  .programName { font-size: 15px; margin-top: 20px; }
+  .heroDescription { font-size: 13px; }
+  .desktopBreak { display: none; }
+  .heroActions { margin-top: 24px; gap: 20px; }
+  .heroNotes { font-size: 11px; gap: 8px 15px; }
+  .heroArt { border-radius: 22px; padding: 22px; }
+  .artTopline > span { font-size: 7px; letter-spacing: 1px; }
+  .orbitScene { height: 300px; }
+  .mainStar { width: 195px; }
+  .orbitOuter { width: 270px; height: 230px; }
+  .orbitInner { width: 220px; height: 220px; }
+  .floatingLabel { padding: 10px; gap: 8px; font-size: 10px; }
+  .floatingLabel small { font-size: 9px; }
+  .joinLabel { left: -6px; top: 38px; }
+  .helpLabel { right: -6px; bottom: 20px; }
+  .artCaption > span:first-child { font-size: 18px; }
+  .captionBadge { font-size: 7px; gap: 4px; padding: 6px; }
+  .captionBadge svg { width: 12px; }
+  .stepsSection { padding: 0 20px 42px; }
+  .scheduleSection { padding: 0 20px 38px; }
+  .schedule { grid-template-columns: 1fr; padding: 0 22px; }
+  .schedule > div { grid-template-columns: 28px 1fr; padding: 18px 0; column-gap: 16px; border-left: 0; border-top: 1px solid #d9dfce; }
+  .schedule > div:first-child { border-top: 0; }
+  .schedule svg { grid-row: 1 / 3; margin-bottom: 0; }
+  .schedule dd { font-size: 14px; }
+  .sectionHeading h2, .rewardsCopy h2 { font-size: 24px; }
+  .steps { grid-template-columns: 1fr; margin-top: 22px; }
+  .step, .step:first-child, .step:last-child { position: relative; border: 0; border-bottom: 1px solid var(--home-line); padding: 20px 0 22px 67px; }
+  .step:last-child { border-bottom: 0; padding-bottom: 0; }
+  .stepTop { margin: 0; }
+  .stepIcon { position: absolute; left: 0; top: 23px; width: 46px; height: 46px; }
+  .stepNumber { position: absolute; right: 0; top: 17px; font-size: 20px; }
+  .step h3 { padding-right: 24px; font-size: 17px; }
+  .step p { max-width: 100%; }
+  .rewardsSection { margin: 0 20px 38px; padding: 26px 20px; }
+  .rewardIcon { width: 50px; height: 50px; }
+  .rewardIcon svg { width: 23px; }
+  .rewardSteps li:not(:last-child)::after { left: calc(50% + 29px); right: calc(-50% + 29px); top: 24px; }
+  .rewardSteps h3 { font-size: 12px; }
+  .rewardSteps p { font-size: 10px; padding: 0 3px; }
+  .rewardNote { font-size: 9px; margin-top: 20px; }
+  .cta { margin: 0 20px 26px; padding: 28px 24px; }
+  .cta h2 { font-size: 26px; }
+  .cta p:last-child { font-size: 12px; line-height: 1.8; }
+  .lightButton { font-size: 13px; width: 100%; }
+  .footer { padding: 0 20px 22px; }
+  .footer > p { width: 100%; order: 3; }
+  .footer a { font-size: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .primaryButton:hover, .lightButton:hover { transform: none; }
+}

@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
-  allowedDevOrigins: ["10.51.209.114", "192.168.1.49"],
+  allowedDevOrigins: ["10.51.209.30", "192.168.1.49"],
   experimental: {
     agentFeedback: true,
   },
@@ -10,7 +10,8 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   turbopack: {
     rules: {
-      "*.css": {
+      // Keep CSS Modules on Next.js's native pipeline so class names are exported.
+      "globals.css": {
         loaders: ["@tailwindcss/turbopack"],
         as: "*.css",
       },

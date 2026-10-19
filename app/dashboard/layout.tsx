@@ -15,6 +15,8 @@ const studentNav: DashboardNavItem[] = [
     icon: "activities",
   },
   { href: "/dashboard/profile", label: "โปรไฟล์", icon: "profile" },
+  { href: "/dashboard/rewards", label: "แลกของรางวัล", icon: "rewards" },
+  { href: "/dashboard/redemptions", label: "ประวัติการแลก", icon: "list" },
 ];
 
 export default function StudentDashboardLayout({

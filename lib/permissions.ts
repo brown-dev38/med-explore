@@ -37,7 +37,7 @@ export function hasPermission(
 ): boolean {
   if (hasRole(principal, ROLES.ADMIN)) return true;
   // This role capability also applies to sessions created before it was granted.
-  if (code === PERMISSIONS.ACADEMIC_YEAR_MANAGE && hasRole(principal, ROLES.ORGANIZER)) return true;
+  if ((code === PERMISSIONS.ACADEMIC_YEAR_MANAGE || code === PERMISSIONS.REWARD_MANAGE) && hasRole(principal, ROLES.ORGANIZER)) return true;
   return Boolean(principal?.permissions?.includes(code));
 }
 
@@ -50,6 +50,10 @@ export function canViewStudents(principal: Principal): boolean {
 }
 
 export function canManageGreenStars(principal: Principal): boolean {
+  return hasRole(principal, ROLES.ADMIN) || hasRole(principal, ROLES.ORGANIZER);
+}
+
+export function canManageRewards(principal: Principal): boolean {
   return hasRole(principal, ROLES.ADMIN) || hasRole(principal, ROLES.ORGANIZER);
 }
 

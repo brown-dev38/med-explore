@@ -123,6 +123,10 @@ if (!hasPermission(user, PERMISSIONS.ACTIVITY_MANAGE)) {
 
 ## แนวทางเขียนโค้ด (conventions)
 
+รูปของรางวัลใช้ `multipart/form-data` บน `POST /api/rewards` และ `PATCH /api/rewards/[id]`: `data` เป็น JSON, `image` เป็นไฟล์ หรือ `removeImage=true` เพื่อนำรูปออก รองรับ JSON เดิมเมื่อไม่มีการเปลี่ยนรูป ตรวจสิทธิ์ ADMIN/ORGANIZER ก่อนอ่านไฟล์และจำกัดขนาด stream จากนั้น `lib/reward-images.ts` ตรวจสอบและแปลงด้วย Sharp ก่อนบันทึกในฐานข้อมูลพร้อมข้อมูลรางวัล
+
+`GET /api/rewards/[id]/image` ตรวจ session แล้วส่ง WebP ด้วย private cache รายการรางวัลส่งเฉพาะ `imageUrl` ที่มี version ตามเวลาปรับรูป โดยไม่อ่าน binary ภาพ `components/reward-image.tsx` ใช้ `next/image` แบบ `unoptimized` เพื่อส่ง cookie ตรงถึง endpoint และแสดงไอคอนสำรองเมื่อไม่มีรูปหรือโหลดไม่สำเร็จ
+
 - **อ่านข้อมูล**: Server Component เรียก Prisma โดยตรง (ผ่าน DAL เมื่อต้องตรวจสิทธิ์)
 - **เขียนข้อมูล**: client เรียก Route Handler → เรียก `router.refresh()` และ/หรือ reload ข้อมูล
 - **รูปแบบ response**: สำเร็จ `{ success: true, data }` (200/201) · ผิดพลาด `{ message }` (400/401/403/404/409/500)

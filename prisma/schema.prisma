@@ -66,6 +66,7 @@ enum RedemptionStatus {
   APPROVED
   COMPLETED
   CANCELLED
+  REJECTED
 }
 
 enum QrPurpose {
@@ -287,10 +288,14 @@ model RewardTier {
   academicYearId BigInt   @map("academic_year_id")
   name           String   @db.VarChar(100)
   description    String?  @db.Text
+  imageData      Bytes?   @map("image_data") @db.MediumBlob
+  imageMimeType  String?  @map("image_mime_type") @db.VarChar(50)
+  imageUpdatedAt DateTime? @map("image_updated_at") @db.DateTime(3)
   costPoints     Int      @map("cost_points")
   stockQuantity  Int?     @map("stock_quantity")
   isActive       Boolean  @default(true) @map("is_active")
   createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  deletedAt      DateTime? @map("deleted_at") @db.DateTime(3)
 
   academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
   redemptions RewardRedemption[]
@@ -311,13 +316,16 @@ model RewardRedemption {
   redeemedAt     DateTime?        @map("redeemed_at") @db.DateTime(3)
   completedAt    DateTime?        @map("completed_at") @db.DateTime(3)
   note           String?          @db.Text
+  requestId      String?          @unique @map("request_id") @db.VarChar(36)
+  reviewedBy     BigInt?          @map("reviewed_by")
+  reviewedAt     DateTime?        @map("reviewed_at") @db.DateTime(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
   academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
   rewardTier RewardTier @relation(fields: [rewardTierId], references: [id], onDelete: Restrict)
   ledgerTransaction StarTransaction? @relation("RedemptionLedger")
 
-  @@unique([userId, academicYearId])
+  @@index([userId, academicYearId, requestedAt])
   @@index([academicYearId, status])
   @@map("reward_redemptions")
 }

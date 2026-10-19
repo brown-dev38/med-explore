@@ -17,6 +17,8 @@ const organizerNav: DashboardNavItem[] = [
     exact: true,
   },
   { href: "/organizer/profile", label: "โปรไฟล์", icon: "profile" },
+  { href: "/organizer/rewards", label: "จัดการของรางวัล", icon: "rewards" },
+  { href: "/organizer/redemptions", label: "คำขอแลกรางวัล", icon: "list" },
 ];
 
 export default function OrganizerLayout({
