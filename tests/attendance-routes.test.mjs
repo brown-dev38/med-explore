@@ -7,16 +7,20 @@ const validation = loadTypeScript("../lib/validation.ts");
 const api = loadTypeScript("../lib/api.ts");
 const participations = loadTypeScript("../lib/participations.ts", { "server-only": {} });
 
-function routes(principal) {
+function routes(principal, { validQr = true, yearStatus = "ACTIVE", yearId = 1n, registered = true } = {}) {
   const calls = [];
+  const qrReads = [];
   const mocks = {
     "@/lib/dal": { getCurrentUser: async () => principal },
     "@/lib/permissions": permissions, "@/lib/validation": validation, "@/lib/api": api,
     "@/lib/participations": participations, "@/lib/qr": { hashQrToken: () => "hash" },
     "@/lib/prisma": { prisma: {
       activity: { findUnique: async () => ({ id: 4n }) },
-      qrSession: { findFirst: async () => ({ activityId: 4n, purpose: "CHECK_OUT" }) },
-      participation: { findUnique: async ({ where }) => { assert.equal(where.activityId_userId.userId, BigInt(principal.id)); return { id: 7n }; } },
+      qrSession: { findFirst: async (query) => { qrReads.push(query); return validQr ? {
+        activityId: 4n, purpose: "CHECK_OUT",
+        activity: { id: 4n, title: "QR activity", status: "PUBLISHED", academicYearId: yearId, academicYear: { status: yearStatus } },
+      } : null; } },
+      participation: { findUnique: async ({ where }) => { assert.equal(where.activityId_userId.userId, BigInt(principal.id)); return registered ? { id: 7n } : null; } },
     } },
     "@/lib/attendance": {
       AttendanceError: class extends Error {},
@@ -35,9 +39,10 @@ function routes(principal) {
   const scan = loadTypeScript("../app/api/attendance/scan/route.ts", mocks);
   const bulk = loadTypeScript("../app/api/activities/[id]/attendance/bulk/route.ts", mocks);
   const recalculate = loadTypeScript("../app/api/activities/[id]/attendance/recalculate/route.ts", mocks);
-  return { calls,
+  return { calls, qrReads,
+    preview: (token = "qr-token", yearId) => scan.GET(new Request(`http://localhost/api/attendance/scan?token=${encodeURIComponent(token)}${yearId === undefined ? "" : `&academicYearId=${encodeURIComponent(yearId)}`}`)),
     manual: (body = { participationId: "7", eventType: "CHECK_OUT" }) => manual.POST(request(body)),
-    scan: () => scan.POST(request({ token: "qr-token", userId: "999", yellowStarPoints: 999 })),
+    scan: (extra = {}) => scan.POST(request({ token: "qr-token", userId: "999", yellowStarPoints: 999, ...extra })),
     bulk: () => bulk.POST(request({ checkInAt: "2026-10-14T09:00:00Z", checkOutAt: "2026-10-14T10:30:00Z" }), context()),
     recalculate: () => recalculate.POST(request({}), context()),
   };
@@ -81,4 +86,63 @@ test("activity managers can recalculate stored attendance", async () => {
   const handlers = routes({ id: "1", roles: ["ADMIN"], permissions: ["activity.manage"] });
   assert.equal((await handlers.recalculate()).status, 200);
   assert.deepEqual(handlers.calls, ["recalculate"]);
+});
+
+test("QR preview is read-only and attendance is written only by the later POST", async () => {
+  const handlers = routes({ id: "5", roles: ["STUDENT"], permissions: [] });
+  const response = await handlers.preview();
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).data.purpose, "CHECK_OUT");
+  assert.equal(response.headers.get("cache-control"), "private, no-store");
+  assert.deepEqual(handlers.calls, []);
+  assert.equal(handlers.qrReads[0].where.revokedAt, null);
+  assert.ok(handlers.qrReads[0].where.expiresAt.gt instanceof Date);
+  assert.equal((await handlers.scan()).status, 201);
+  assert.equal(handlers.calls.length, 1);
+});
+
+test("QR preview rejects guests, missing tokens, expired and revoked sessions without writing attendance", async () => {
+  const guest = routes(null);
+  assert.equal((await guest.preview()).status, 401);
+  assert.deepEqual(guest.qrReads, []);
+  const missing = routes({ id: "5" });
+  assert.equal((await missing.preview("")).status, 400);
+  assert.deepEqual(missing.qrReads, []);
+  const invalid = routes({ id: "5" }, { validQr: false });
+  assert.equal((await invalid.preview()).status, 400);
+  assert.equal((await invalid.scan()).status, 400);
+  assert.deepEqual(invalid.calls, []);
+});
+
+test("QR preview and submission reject closed and draft years even without a selected-year parameter", async () => {
+  for (const yearStatus of ["CLOSED", "DRAFT"]) {
+    for (const registered of [true, false]) {
+      const handlers = routes({ id: "5" }, { yearStatus, registered });
+      assert.equal((await handlers.preview()).status, 409);
+      const response = await handlers.scan();
+      assert.equal(response.status, 409);
+      assert.notEqual((await response.json()).code, "NOT_REGISTERED");
+      assert.deepEqual(handlers.calls, []);
+    }
+  }
+});
+
+test("a QR from another year cannot record attendance in the selected year", async () => {
+  const handlers = routes({ id: "5" }, { yearId: 2n });
+  for (const response of [await handlers.preview("qr-token", "1"), await handlers.scan({ academicYearId: "1" })]) {
+    assert.equal(response.status, 409);
+    assert.match((await response.json()).message, /คนละปีการศึกษา/);
+  }
+  assert.deepEqual(handlers.calls, []);
+  assert.equal((await handlers.preview("qr-token", "2")).status, 200);
+  assert.equal((await handlers.scan({ academicYearId: "2" })).status, 201);
+});
+
+test("invalid selected-year IDs are rejected before looking up QR sessions", async () => {
+  for (const academicYearId of ["0", "-1", "abc", "1.5", "01", "9223372036854775808"]) {
+    const handlers = routes({ id: "5" });
+    assert.equal((await handlers.preview("qr-token", academicYearId)).status, 400);
+    assert.equal((await handlers.scan({ academicYearId })).status, 400);
+    assert.deepEqual(handlers.qrReads, []);
+  }
 });

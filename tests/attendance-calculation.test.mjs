@@ -54,6 +54,7 @@ test("the overview sums valid completed attendance and excludes cancelled activi
 test("attendance and star failures run inside the same transaction and roll all writes back", async () => {
   const state = { records: [], audits: [] };
   const tx = {
+    $queryRaw: async () => [{ status: "ACTIVE" }],
     attendanceRecord: { findMany: async () => [], create: async ({ data }) => { const record = { id: 1n, ...data }; state.records.push(record); return record; } },
     participation: { findUniqueOrThrow: async () => ({ activityId: 1n }) },
     auditLog: { create: async ({ data }) => { state.audits.push(data); } },

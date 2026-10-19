@@ -1,11 +1,12 @@
 import type { AcademicYearStatus } from "@prisma/client";
+import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/dal";
 import { hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { academicYearCreateSchema } from "@/lib/validation";
 import { errorResponse, successResponse } from "@/lib/api";
 import { recordAudit } from "@/lib/audit";
-import { setActiveAcademicYear, toAcademicYearDto } from "@/lib/academic-years";
+import { AcademicYearError, setActiveAcademicYear, toAcademicYearDto } from "@/lib/academic-years";
 
 const VALID_STATUS: AcademicYearStatus[] = ["DRAFT", "ACTIVE", "CLOSED"];
 
@@ -63,8 +64,14 @@ export async function POST(req: Request) {
     },
   });
 
-  const finalYear =
-    status === "ACTIVE" ? await setActiveAcademicYear(created.id) : created;
+  let finalYear = created;
+  try {
+    if (status === "ACTIVE") finalYear = await setActiveAcademicYear(created.id, BigInt(user.id));
+  } catch (error) {
+    if (error instanceof AcademicYearError) return errorResponse(error.message, error.status);
+    console.error("Academic year activation failed:", error);
+    return errorResponse("สร้างฉบับร่างแล้ว แต่เปิดใช้งานไม่สำเร็จ กรุณาลองเปิดใช้งานอีกครั้ง", 500);
+  }
 
   await recordAudit({
     actorId: BigInt(user.id),
@@ -73,6 +80,10 @@ export async function POST(req: Request) {
     entityId: finalYear.id,
     details: { code: finalYear.code, status: finalYear.status },
   });
+
+  if (status === "ACTIVE") {
+    for (const area of ["admin", "organizer", "dashboard"]) revalidatePath(`/${area}`, "layout");
+  }
 
   return successResponse(toAcademicYearDto(finalYear), 201);
 }

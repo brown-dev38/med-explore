@@ -45,6 +45,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { ActivityScheduleEditor } from "@/components/activity-schedule-editor";
 
 const STATUS_CONFIG: Record<
   ActivityStatus,
@@ -316,6 +317,7 @@ export function ActivitiesManager({
                         <Button
                           variant="outline"
                           size="sm"
+                          nativeButton={false}
                           render={
                             <Link href={`${detailBasePath}/${act.id}`}>
                               รายละเอียด
@@ -324,6 +326,15 @@ export function ActivitiesManager({
                         />
 
                         {act.status === "DRAFT" && (
+                          <>
+                            <ActivityScheduleEditor
+                              activity={act}
+                              disabled={busy}
+                              onSaved={(updated) => setItems((current) => current
+                                .map((item) => item.id === updated.id ? { ...item, ...updated } : item)
+                                .sort((a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt)))}
+                              onConflict={() => { void reload(); }}
+                            />
                             <Button
                               variant="default"
                               size="sm"
@@ -332,6 +343,7 @@ export function ActivitiesManager({
                             >
                               เปิดรับลงทะเบียน
                             </Button>
+                          </>
                         )}
 
                         {act.status === "PUBLISHED" && (

@@ -4,24 +4,33 @@ import { getStudentDashboardContext } from "@/lib/student-dashboard";
 import { toActivityDto } from "@/lib/activities";
 import type { ActivityListItem } from "@/types/activity";
 import { ActivitiesBrowser } from "@/components/activities-browser";
+import Link from "next/link";
+import { getStudentYearContext } from "@/lib/student-academic-years";
+import type { StudentYearPageProps } from "@/lib/student-activity-filters";
+import { StudentYearSelector } from "@/components/student-year-selector";
 
 export const metadata = {
   title: "เช็คอิน / เช็คเอาท์กิจกรรม | MedExplore Star",
 };
 
-export default function DashboardActivitiesPage() {
+export default function DashboardActivitiesPage(props: StudentYearPageProps) {
   return (
     <Suspense fallback={<div className="text-sm text-slate-500">กำลังโหลด...</div>}>
-      <DashboardActivitiesContent />
+      <DashboardActivitiesContent {...props} />
     </Suspense>
   );
 }
 
-async function DashboardActivitiesContent() {
+async function DashboardActivitiesContent({ searchParams }: StudentYearPageProps) {
   const { user } = await getStudentDashboardContext();
+  const { years, selectedYear } = await getStudentYearContext(searchParams);
+  const selector = <StudentYearSelector years={years} selectedId={selectedYear?.id ?? null} basePath="/dashboard/activities" />;
+  if (!selectedYear || selectedYear.status !== "ACTIVE") {
+    return <div className="space-y-5">{selector}<p role="status" className="rounded-xl border bg-card p-5 text-sm text-muted-foreground">{selectedYear?.status === "CLOSED" ? `ปีการศึกษา ${selectedYear.code} ปิดแล้ว ไม่สามารถเช็คอินหรือเช็คเอาท์ได้` : "ยังไม่มีปีการศึกษาที่เปิดใช้งานสำหรับบันทึกเวลา"}</p>{selectedYear && <Link href={`/dashboard/my-activities?academicYearId=${selectedYear.id}`} className="inline-block text-sm text-primary underline">ดูประวัติกิจกรรมของปีนี้</Link>}</div>;
+  }
 
   const activities = await prisma.activity.findMany({
-    where: { status: "PUBLISHED" },
+    where: { status: "PUBLISHED", academicYearId: BigInt(selectedYear.id) },
     orderBy: { startsAt: "asc" },
     include: { _count: { select: { participations: true } } },
   });
@@ -65,5 +74,5 @@ async function DashboardActivitiesContent() {
     myParticipation: mineByActivity.get(String(activity.id)) ?? null,
   }));
 
-  return <ActivitiesBrowser initial={initial} />;
+  return <div className="space-y-5">{selector}<ActivitiesBrowser key={selectedYear.id} initial={initial} academicYearId={selectedYear.id} /></div>;
 }

@@ -63,7 +63,7 @@ export async function POST(req: Request) {
 
   const origin = getRequestOrigin(req);
   const scanUrl = `${origin}/scan?token=${encodeURIComponent(token)}`;
-  const qrDataUrl = await QRCode.toDataURL(scanUrl, { width: 320, margin: 1 });
+  const qrDataUrl = await QRCode.toDataURL(scanUrl, { width: 1024, margin: 4 });
 
   await recordAudit({
     actorId: BigInt(user.id),

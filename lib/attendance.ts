@@ -10,12 +10,27 @@ export class AttendanceError extends Error {
   }
 }
 
+async function requireOpenActivityYear(tx: Prisma.TransactionClient, activityId: bigint) {
+  const [year] = await tx.$queryRaw<{ status: string }[]>`
+    SELECT y.status FROM academic_years y
+    INNER JOIN activities a ON a.academic_year_id = y.id
+    WHERE a.id = ${activityId} LOCK IN SHARE MODE
+  `;
+  if (!year) throw new AttendanceError("ไม่พบกิจกรรม", 404);
+  if (year.status === "CLOSED") throw new AttendanceError("ปีการศึกษานี้ปิดแล้ว ไม่สามารถแก้ไขเวลาและดาวได้", 409);
+}
+
 export async function attendanceTransaction<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     try {
       return await prisma.$transaction(fn, { isolationLevel: "Serializable", timeout: 60000 });
     } catch (error) {
-      if ((error as { code?: string }).code === "P2034" && attempt < 2) continue;
+      const failure = error as { code?: string; meta?: { code?: string | number; driverAdapterError?: { cause?: { kind?: string; originalCode?: string } } } };
+      const cause = failure.meta?.driverAdapterError?.cause;
+      const conflict = failure.code === "P2034" || (failure.code === "P2010" && (
+        cause?.kind === "TransactionWriteConflict" || ["1213", "1205"].includes(String(failure.meta?.code ?? cause?.originalCode))
+      ));
+      if (conflict && attempt < 2) continue;
       throw error;
     }
   }
@@ -29,6 +44,8 @@ async function writeEvents(tx: Prisma.TransactionClient, params: {
 }) {
   const { participationId, method, recordedBy } = params;
   if (!(await lockAttendanceUser(tx, participationId))) throw new AttendanceError("ไม่พบผู้เข้าร่วม", 404);
+  const participation = await tx.participation.findUniqueOrThrow({ where: { id: participationId }, select: { activityId: true } });
+  await requireOpenActivityYear(tx, participation.activityId);
   const current = await tx.attendanceRecord.findMany({ where: { participationId } });
   let events = params.events;
   const existingIn = current.find((record) => record.eventType === "CHECK_IN");
@@ -48,7 +65,6 @@ async function writeEvents(tx: Prisma.TransactionClient, params: {
   if (prospectiveIn && prospectiveOut && prospectiveOut < prospectiveIn) {
     throw new AttendanceError("เวลาเช็คเอาท์ต้องไม่อยู่ก่อนเวลาเช็คอิน", 400);
   }
-  const participation = await tx.participation.findUniqueOrThrow({ where: { id: participationId }, select: { activityId: true } });
   const records = [];
   let created = false;
   for (const event of events) {
@@ -101,6 +117,7 @@ export async function bulkRecordAttendance(activityId: bigint, actorId: bigint, 
 }
 
 export async function recalculateActivityAttendance(tx: Prisma.TransactionClient, activityId: bigint, actorId: bigint) {
+  await requireOpenActivityYear(tx, activityId);
   const participations = await tx.participation.findMany({ where: { activityId }, select: { id: true }, orderBy: { userId: "asc" } });
   for (const participation of participations) {
     if (await lockAttendanceUser(tx, participation.id)) await evaluateAttendance(tx, participation.id, actorId);
@@ -118,16 +135,18 @@ export async function backfillAttendanceResults(participationIds?: readonly bigi
       where: {
         ...(participationIds ? { id: { in: [...participationIds] } } : {}),
         attendedMinutes: null,
+        activity: { academicYear: { status: { not: "CLOSED" } } },
         AND: [
           { attendanceRecords: { some: { eventType: "CHECK_IN" } } },
           { attendanceRecords: { some: { eventType: "CHECK_OUT" } } },
         ],
       },
-      select: { id: true }, orderBy: [{ userId: "asc" }, { id: "asc" }],
+      select: { id: true, activityId: true }, orderBy: [{ userId: "asc" }, { id: "asc" }],
     });
     const processed: string[] = [];
     let approvedYellowStars = 0;
     for (const participation of pending) {
+      await requireOpenActivityYear(tx, participation.activityId);
       if (!(await lockAttendanceUser(tx, participation.id))) continue;
       const current = await tx.participation.findUnique({ where: { id: participation.id }, select: { attendedMinutes: true } });
       if (!current || current.attendedMinutes !== null) continue;

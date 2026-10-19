@@ -43,6 +43,9 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     );
     return successResponse(updated);
   } catch (error) {
+    if (error instanceof Error && error.message === "ACADEMIC_YEAR_CLOSED") {
+      return errorResponse("ปีการศึกษานี้ปิดแล้ว ไม่สามารถแก้ไขงานและดาวได้", 409);
+    }
     if (error instanceof Error && error.message === "NOT_FOUND") {
       return errorResponse("ไม่พบข้อมูลผู้ช่วยงาน", 404);
     }
@@ -70,6 +73,9 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
     await removeHelper(parsedHelperId, BigInt(user.id));
     return successResponse({ deleted: true });
   } catch (error) {
+    if (error instanceof Error && error.message === "ACADEMIC_YEAR_CLOSED") {
+      return errorResponse("ปีการศึกษานี้ปิดแล้ว ไม่สามารถลบงานและดาวได้", 409);
+    }
     if (error instanceof Error && error.message === "NOT_FOUND") {
       return errorResponse("ไม่พบข้อมูลผู้ช่วยงาน", 404);
     }

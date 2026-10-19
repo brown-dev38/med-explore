@@ -16,7 +16,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { RewardImage } from "@/components/reward-image";
 import { MAX_REWARD_IMAGE_BYTES, REWARD_IMAGE_ACCEPT, REWARD_IMAGE_TYPES } from "@/lib/reward-image-rules";
 
-export function RewardManager({ rewards, academicYearId }: { rewards: RewardDto[]; academicYearId: string }) {
+export function RewardManager({ rewards, academicYearId, yearClosed = false }: { rewards: RewardDto[]; academicYearId: string; yearClosed?: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<RewardDto | null>(null);
@@ -26,7 +26,7 @@ export function RewardManager({ rewards, academicYearId }: { rewards: RewardDto[
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [removeImage, setRemoveImage] = useState(false);
-  const [form, setForm] = useState({ name: "", description: "", costPoints: "1", stockQuantity: "0", unlimited: false, isActive: true });
+  const [form, setForm] = useState({ name: "", description: "", costPoints: "1", stockQuantity: "0", unlimited: false, isActive: !yearClosed });
 
   useEffect(() => () => { if (imagePreview?.startsWith("blob:")) URL.revokeObjectURL(imagePreview); }, [imagePreview]);
 
@@ -47,7 +47,7 @@ export function RewardManager({ rewards, academicYearId }: { rewards: RewardDto[
   function edit(reward: RewardDto | null) {
     setEditing(reward);
     setForm({ name: reward?.name ?? "", description: reward?.description ?? "", costPoints: String(reward?.costPoints ?? 1),
-      stockQuantity: String(reward?.stockQuantity ?? 0), unlimited: reward?.stockQuantity === null, isActive: reward?.isActive ?? true });
+      stockQuantity: String(reward?.stockQuantity ?? 0), unlimited: reward?.stockQuantity === null, isActive: !yearClosed && (reward?.isActive ?? true) });
     setError("");
     setImageFile(null);
     setImagePreview(reward?.imageUrl ?? null);
@@ -61,7 +61,7 @@ export function RewardManager({ rewards, academicYearId }: { rewards: RewardDto[
     setSaving(true);
     setError("");
     const data = { name: form.name, description: form.description || null, costPoints: Number(form.costPoints),
-      stockQuantity: form.unlimited ? null : Number(form.stockQuantity), isActive: form.isActive };
+      stockQuantity: form.unlimited ? null : Number(form.stockQuantity), isActive: !yearClosed && form.isActive };
     try {
       const payload = {
         ...data, ...(editing ? { expectedStockQuantity: editing.stockQuantity } : { academicYearId }),
@@ -84,6 +84,7 @@ export function RewardManager({ rewards, academicYearId }: { rewards: RewardDto[
 
   return (
     <div className="space-y-5">
+      {yearClosed && <p role="status" className="rounded-xl border bg-muted/50 p-4 text-sm text-muted-foreground">ปิดปีการศึกษาแล้ว รางวัลทั้งหมดปิดรับแลก สามารถดูและแก้ไขรายละเอียดรางวัลได้</p>}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">{rewards.length} รางวัล · จำนวนคงเหลือหักส่วนที่จองรออนุมัติแล้ว</p>
         <Button onClick={() => edit(null)}><Plus />เพิ่มของรางวัล</Button>
@@ -96,7 +97,7 @@ export function RewardManager({ rewards, academicYearId }: { rewards: RewardDto[
             <Card key={reward.id}>
               <CardContent className="flex h-full flex-col gap-4 p-5">
                 <RewardImage src={reward.imageUrl} name={reward.name} />
-                <div><Badge variant={reward.isActive ? "secondary" : "outline"}>{reward.isActive ? "เปิดให้แลก" : "ปิดให้แลก"}</Badge></div>
+                <div><Badge variant={!yearClosed && reward.isActive ? "secondary" : "outline"}>{!yearClosed && reward.isActive ? "เปิดให้แลก" : "ปิดให้แลก"}</Badge></div>
                 <div><h2 className="break-words text-lg font-semibold">{reward.name}</h2><p className="mt-1 whitespace-pre-wrap break-words text-sm text-muted-foreground">{reward.description || "ไม่มีรายละเอียดเพิ่มเติม"}</p></div>
                 <dl className="mt-auto grid grid-cols-3 gap-2 rounded-xl bg-muted/50 p-3 text-sm">
                   <div><dt className="text-xs text-muted-foreground">ใช้ดาว</dt><dd className="mt-1 font-semibold">{reward.costPoints}</dd></div>
@@ -127,7 +128,8 @@ export function RewardManager({ rewards, academicYearId }: { rewards: RewardDto[
               <div className="space-y-2"><Label htmlFor="reward-stock">จำนวนที่พร้อมแลก</Label><Input id="reward-stock" type="number" min={0} max={1000000} disabled={form.unlimited} required={!form.unlimited} value={form.stockQuantity} onChange={(event) => setForm({ ...form, stockQuantity: event.target.value })} /></div>
             </div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.unlimited} onChange={(event) => setForm({ ...form, unlimited: event.target.checked })} />ไม่จำกัดจำนวน</label>
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isActive} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} />เปิดให้นิสิตแลกของรางวัล</label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!yearClosed && form.isActive} disabled={yearClosed || saving} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} />เปิดให้นิสิตแลกของรางวัล</label>
+            {yearClosed && <p className="text-xs text-muted-foreground">ไม่สามารถเปิดแลกรางวัลในปีการศึกษาที่ปิดแล้ว</p>}
             {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
             <DialogFooter><Button type="button" variant="outline" disabled={saving} onClick={() => setOpen(false)}>ยกเลิก</Button><Button type="submit" disabled={saving}>{saving ? "กำลังบันทึก..." : "บันทึก"}</Button></DialogFooter>
           </form>

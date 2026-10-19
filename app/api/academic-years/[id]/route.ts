@@ -1,12 +1,12 @@
 import type { Prisma } from "@prisma/client";
+import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/dal";
 import { hasPermission, hasRole, PERMISSIONS, ROLES } from "@/lib/permissions";
 import { deleteAcademicYear, DeletionError } from "@/lib/admin-deletion";
 import { academicYearUpdateSchema } from "@/lib/validation";
 import { errorResponse, parseId, successResponse } from "@/lib/api";
-import { recordAudit } from "@/lib/audit";
-import { toAcademicYearDto } from "@/lib/academic-years";
+import { AcademicYearError, toAcademicYearDto, updateAcademicYear } from "@/lib/academic-years";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -75,25 +75,15 @@ export async function PATCH(req: Request, { params }: RouteContext) {
   if (endsOn !== undefined) data.endsOn = new Date(endsOn);
   if (status !== undefined) data.status = status;
 
-  const updated = await prisma.$transaction(async (tx) => {
-    if (status === "ACTIVE") {
-      await tx.academicYear.updateMany({
-        where: { status: "ACTIVE", id: { not: yearId } },
-        data: { status: "CLOSED" },
-      });
-    }
-    return tx.academicYear.update({ where: { id: yearId }, data });
-  });
-
-  await recordAudit({
-    actorId: BigInt(user.id),
-    action: "academic_year.update",
-    entityType: "AcademicYear",
-    entityId: updated.id,
-    details: { code: updated.code, status: updated.status },
-  });
-
-  return successResponse(toAcademicYearDto(updated));
+  try {
+    const updated = await updateAcademicYear(yearId, data, BigInt(user.id));
+    for (const area of ["admin", "organizer", "dashboard"]) revalidatePath(`/${area}`, "layout");
+    return successResponse(toAcademicYearDto(updated));
+  } catch (error) {
+    if (error instanceof AcademicYearError) return errorResponse(error.message, error.status);
+    console.error("Academic year update failed:", error);
+    return errorResponse("บันทึกปีการศึกษาไม่สำเร็จ ข้อมูลยังไม่ถูกเปลี่ยนแปลง กรุณาลองใหม่", 500);
+  }
 }
 
 export async function DELETE(_req: Request, { params }: RouteContext) {

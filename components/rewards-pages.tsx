@@ -44,7 +44,7 @@ async function RewardsContent(props: PageProps) {
         <Link href={history} className="inline-flex min-h-10 items-center gap-2 rounded-lg border bg-card px-4 text-sm font-medium hover:bg-muted"><ClipboardCheck className="size-4" />{staff ? "พิจารณาคำขอแลก" : "ประวัติและสถานะคำขอ"}</Link>
       </div>
       <StudentYearSelector years={years} selectedId={selectedYear?.id ?? null} basePath={`/${area}/rewards`} />
-      {!selectedYear ? <p className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">ยังไม่มีปีการศึกษา กรุณาติดต่อผู้ดูแลเพื่อเริ่มใช้งาน</p> : staff ? <RewardManager key={selectedYear.id} rewards={rewards} academicYearId={selectedYear.id} /> : <RewardCatalog key={selectedYear.id} rewards={rewards} balance={balance} canRedeem={selectedYear.status === "ACTIVE"} />}
+      {!selectedYear ? <p className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">ยังไม่มีปีการศึกษา กรุณาติดต่อผู้ดูแลเพื่อเริ่มใช้งาน</p> : staff ? <RewardManager key={selectedYear.id} rewards={rewards} academicYearId={selectedYear.id} yearClosed={selectedYear.status === "CLOSED"} /> : <RewardCatalog key={selectedYear.id} rewards={rewards} balance={balance} canRedeem={selectedYear.status === "ACTIVE"} yearClosed={selectedYear.status === "CLOSED"} />}
     </div>
   );
 }

@@ -7,6 +7,40 @@ import { hashQrToken } from "@/lib/qr";
 import { AttendanceError, recordAttendance } from "@/lib/attendance";
 import { toAttendanceDto } from "@/lib/participations";
 
+async function findQrSession(token: string) {
+  return prisma.qrSession.findFirst({
+    where: { tokenHash: hashQrToken(token), revokedAt: null, expiresAt: { gt: new Date() } },
+    include: { activity: { select: { id: true, title: true, status: true, academicYearId: true, academicYear: { select: { status: true } } } } },
+  });
+}
+
+function validateSessionYear(session: NonNullable<Awaited<ReturnType<typeof findQrSession>>>, academicYearId?: string) {
+  if (academicYearId && session.activity.academicYearId !== BigInt(academicYearId)) {
+    return errorResponse("QR นี้เป็นกิจกรรมคนละปีการศึกษากับปีที่เลือก กรุณาตรวจสอบ QR Code", 409);
+  }
+  if (session.activity.academicYear.status !== "ACTIVE") {
+    return errorResponse(session.activity.academicYear.status === "CLOSED"
+      ? "ปีการศึกษาของกิจกรรมนี้ปิดแล้ว ไม่สามารถเช็คอินหรือเช็คเอาท์ได้"
+      : "ปีการศึกษาของกิจกรรมนี้ยังไม่เปิดใช้งาน", 409);
+  }
+  return null;
+}
+
+export async function GET(req: Request) {
+  const user = await getCurrentUser();
+  if (!user) return errorResponse("กรุณาเข้าสู่ระบบ", 401);
+  const params = new URL(req.url).searchParams;
+  const parsed = attendanceScanSchema.safeParse({ token: params.get("token"), academicYearId: params.get("academicYearId") ?? undefined });
+  if (!parsed.success) return errorResponse("ไม่พบรหัส QR ที่ถูกต้อง", 400);
+  const session = await findQrSession(parsed.data.token);
+  if (!session) return errorResponse("QR ไม่ถูกต้อง ถูกยกเลิก หรือหมดอายุแล้ว", 400);
+  const yearError = validateSessionYear(session, parsed.data.academicYearId);
+  if (yearError) return yearError;
+  return NextResponse.json({ success: true, data: { purpose: session.purpose } }, {
+    headers: { "Cache-Control": "private, no-store" },
+  });
+}
+
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return errorResponse("กรุณาเข้าสู่ระบบ", 401);
@@ -20,16 +54,12 @@ export async function POST(req: Request) {
     );
   }
 
-  const session = await prisma.qrSession.findFirst({
-    where: {
-      tokenHash: hashQrToken(parsed.data.token),
-      revokedAt: null,
-      expiresAt: { gt: new Date() },
-    },
-  });
+  const session = await findQrSession(parsed.data.token);
   if (!session) {
     return errorResponse("QR ไม่ถูกต้อง ถูกยกเลิก หรือหมดอายุแล้ว", 400);
   }
+  const yearError = validateSessionYear(session, parsed.data.academicYearId);
+  if (yearError) return yearError;
 
   const userId = BigInt(user.id);
   const participation = await prisma.participation.findUnique({
@@ -38,10 +68,7 @@ export async function POST(req: Request) {
     },
   });
   if (!participation) {
-    const activity = await prisma.activity.findUnique({
-      where: { id: session.activityId },
-      select: { id: true, title: true, status: true },
-    });
+    const activity = session.activity;
     return NextResponse.json(
       {
         message: "คุณยังไม่ได้ลงทะเบียนกิจกรรมนี้",

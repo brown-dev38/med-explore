@@ -29,8 +29,10 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 
 export function ActivitiesBrowser({
   initial,
+  academicYearId,
 }: {
   initial: ActivityListItem[];
+  academicYearId: string;
 }) {
   const router = useRouter();
   const [items, setItems] = useState(initial);
@@ -44,7 +46,7 @@ export function ActivitiesBrowser({
 
   async function reload() {
     try {
-      const res = await fetch("/api/activities");
+      const res = await fetch(`/api/activities?academicYearId=${encodeURIComponent(academicYearId)}`);
       if (!res.ok) throw new Error("refresh failed");
       const json = await res.json();
       setItems(json.data);
@@ -194,8 +196,9 @@ export function ActivitiesBrowser({
                   <div className="flex flex-wrap items-center gap-2">
                     {!checkedOut ? (
                       <Button
+                        nativeButton={false}
                         render={
-                          <Link href="/scan">
+                          <Link href={`/scan?academicYearId=${encodeURIComponent(academicYearId)}`}>
                             <QrCode className="mr-1.5 h-4 w-4" />
                             {checkedIn
                               ? "สแกน QR Check-out"

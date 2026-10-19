@@ -123,6 +123,7 @@ test("completion awards exactly one green star per helper in its activity's year
   };
   const stars = new Map();
   const tx = {
+    $queryRaw: async () => [{ status: "ACTIVE" }],
     helperAssignment: {
       update: async ({ data }) => { helper = { ...helper, ...data }; return { ...helper, starTransactions: [...stars.values()] }; },
       findUniqueOrThrow: async () => ({ ...helper, starTransactions: [...stars.values()] }),

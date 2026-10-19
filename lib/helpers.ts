@@ -15,6 +15,11 @@ export type HelperWithRelations = Prisma.HelperAssignmentGetPayload<{
   };
 }>;
 
+async function requireOpenHelperYear(tx: Prisma.TransactionClient, academicYearId: bigint) {
+  const [year] = await tx.$queryRaw<{ status: string }[]>`SELECT status FROM academic_years WHERE id = ${academicYearId} LOCK IN SHARE MODE`;
+  if (!year || year.status === "CLOSED") throw new Error("ACADEMIC_YEAR_CLOSED");
+}
+
 export function toHelperAssignmentDto(
   helper: HelperWithRelations,
 ): HelperAssignmentDto {
@@ -203,6 +208,7 @@ export async function updateHelperStatusAndStar(
   }
 
   const result = await prisma.$transaction(async (tx) => {
+    await requireOpenHelperYear(tx, current.activity.academicYearId);
     const now = new Date();
 
     if (status === "COMPLETED") {
@@ -338,7 +344,7 @@ export async function removeHelper(
 ): Promise<void> {
   const current = await prisma.helperAssignment.findUnique({
     where: { id: helperId },
-    include: { starTransactions: true },
+    include: { starTransactions: true, activity: { select: { academicYearId: true } } },
   });
 
   if (!current) {
@@ -346,6 +352,7 @@ export async function removeHelper(
   }
 
   await prisma.$transaction(async (tx) => {
+    await requireOpenHelperYear(tx, current.activity.academicYearId);
     // ลบ star transactions ที่ผูกกันถ้ามี
     await tx.starTransaction.deleteMany({
       where: { helperAssignmentId: helperId },
@@ -418,8 +425,8 @@ export async function getStudentStarSummary(
 
   const totalStars = yellowStars + greenStars;
 
-  const reservedStars = Math.max(0, -(reservations._sum.points ?? 0));
-  const availableStars = Math.max(0, stars.reduce((sum, star) => sum + star.points, 0) - reservedStars);
+  const reservedStars = activeYear?.status === "CLOSED" ? 0 : Math.max(0, -(reservations._sum.points ?? 0));
+  const availableStars = activeYear?.status === "CLOSED" ? 0 : Math.max(0, stars.reduce((sum, star) => sum + star.points, 0) - reservedStars);
   const nextTarget = rewards.find((reward) => reward.costPoints > availableStars) ?? rewards.at(-1);
   const targetTier = nextTarget ? { name: nextTarget.name, targetStars: nextTarget.costPoints, remaining: Math.max(0, nextTarget.costPoints - availableStars) } : null;
 

@@ -45,8 +45,8 @@ export async function rewardBalance(
   userId: bigint, academicYearId: bigint, tx: Pick<Prisma.TransactionClient, "starTransaction"> = prisma,
 ): Promise<RewardBalance> {
   const [approved, pending] = await Promise.all([
-    tx.starTransaction.aggregate({ where: { userId, academicYearId, status: "APPROVED" }, _sum: { points: true } }),
-    tx.starTransaction.aggregate({ where: { userId, academicYearId, status: "PENDING", redemptionId: { not: null }, points: { lt: 0 } }, _sum: { points: true } }),
+    tx.starTransaction.aggregate({ where: { userId, academicYearId, academicYear: { status: { not: "CLOSED" } }, status: "APPROVED" }, _sum: { points: true } }),
+    tx.starTransaction.aggregate({ where: { userId, academicYearId, academicYear: { status: { not: "CLOSED" } }, status: "PENDING", redemptionId: { not: null }, points: { lt: 0 } }, _sum: { points: true } }),
   ]);
   const balance = approved._sum.points ?? 0;
   const reserved = Math.max(0, -(pending._sum.points ?? 0));
@@ -57,21 +57,23 @@ export async function rewardCatalog(academicYearId: bigint): Promise<RewardDto[]
   const rewards = await prisma.rewardTier.findMany({
     where: { academicYearId, deletedAt: null },
     orderBy: [{ costPoints: "asc" }, { id: "asc" }],
-    include: { _count: { select: { redemptions: { where: { status: "PENDING" } } } } },
+    include: { academicYear: { select: { status: true } }, _count: { select: { redemptions: { where: { status: "PENDING" } } } } },
     omit: { imageData: true },
   });
   return rewards.map((reward) => ({
     id: String(reward.id), academicYearId: String(reward.academicYearId), name: reward.name,
     description: reward.description, imageUrl: reward.imageUpdatedAt ? `/api/rewards/${reward.id}/image?v=${reward.imageUpdatedAt.getTime()}` : null,
     costPoints: reward.costPoints, stockQuantity: reward.stockQuantity,
-    isActive: reward.isActive, pendingQuantity: reward._count.redemptions,
+    isActive: reward.isActive && reward.academicYear.status !== "CLOSED", pendingQuantity: reward._count.redemptions,
   }));
 }
 
 export async function createReward(input: RewardCreateInput, actorId: bigint, image?: RewardImageChange) {
   return transact(async (tx) => {
     await requireLiveRole(tx, actorId, ["ADMIN", "ORGANIZER"]);
-    if (!await tx.academicYear.findUnique({ where: { id: BigInt(input.academicYearId) } })) throw new RewardError("ไม่พบปีการศึกษา", 404);
+    const year = await tx.academicYear.findUnique({ where: { id: BigInt(input.academicYearId) } });
+    if (!year) throw new RewardError("ไม่พบปีการศึกษา", 404);
+    if (year.status === "CLOSED" && input.isActive) throw new RewardError("ปีการศึกษานี้ปิดแล้ว ไม่สามารถเปิดแลกรางวัลได้", 409);
     const reward = await tx.rewardTier.create({ data: { ...input, ...image, academicYearId: BigInt(input.academicYearId) }, select: { id: true } });
     await tx.auditLog.create({ data: { actorId, action: "reward.create", entityType: "RewardTier", entityId: reward.id, details: input } });
     return { id: String(reward.id) };
@@ -83,6 +85,8 @@ export async function updateReward(id: bigint, input: RewardUpdateInput, actorId
     await requireLiveRole(tx, actorId, ["ADMIN", "ORGANIZER"]);
     const reward = await lockReward(tx, id);
     if (reward.deletedAt) throw new RewardError("รางวัลนี้ถูกลบแล้ว", 404);
+    const year = await tx.academicYear.findUnique({ where: { id: reward.academicYearId } });
+    if (year?.status === "CLOSED" && input.isActive) throw new RewardError("ปีการศึกษานี้ปิดแล้ว ไม่สามารถเปิดแลกรางวัลได้", 409);
     if (reward.stockQuantity !== input.expectedStockQuantity) throw new RewardError("จำนวนคงเหลือเปลี่ยนไปแล้ว กรุณารีเฟรชก่อนแก้ไข", 409);
     if ((reward.stockQuantity === null) !== (input.stockQuantity === null)) {
       const pending = await tx.rewardRedemption.count({ where: { rewardTierId: id, status: "PENDING" } });

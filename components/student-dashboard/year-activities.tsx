@@ -66,7 +66,7 @@ async function YearActivitiesContent({ searchParams: params, target }: StudentYe
 
   return (
     <div className="space-y-6">
-      <Button variant="ghost" size="sm" render={<Link href={selectedYear ? `${basePath}?academicYearId=${selectedYear.id}` : basePath} />}>
+      <Button variant="ghost" size="sm" nativeButton={false} render={<Link href={selectedYear ? `${basePath}?academicYearId=${selectedYear.id}` : basePath} />}>
         <ArrowLeft />กลับหน้าภาพรวม
       </Button>
       <div className="space-y-2">
@@ -79,6 +79,7 @@ async function YearActivitiesContent({ searchParams: params, target }: StudentYe
         <nav aria-label="กรองกิจกรรม" className="flex flex-wrap gap-2">
           {FILTERS.map((item) => (
             <Button key={item.value} size="sm" variant={item.value === filter.value ? "default" : "outline"}
+              nativeButton={false}
               render={<Link href={studentActivitiesHref(selectedYear.id, item.value, basePath)} aria-current={item.value === filter.value ? "page" : undefined} />}
             >{item.label}</Button>
           ))}

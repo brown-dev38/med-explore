@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -9,7 +9,6 @@ import {
   AlertCircle,
   Clock,
   ArrowRight,
-  Sparkles,
   QrCode,
   Loader2,
 } from "lucide-react";
@@ -28,18 +27,18 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 type ScanState = {
-  status: "loading" | "ok" | "info" | "error" | "unregistered";
+  status: "loading" | "ok" | "info" | "error" | "unregistered" | "ready_checkout";
   message: string;
   activityId?: string;
-  activityTitle?: string;
   canRegister?: boolean;
+  token?: string;
 };
 
 type ScanResponse = {
   message?: string;
   code?: string;
   activity?: { id: string; title: string; status: string } | null;
-  data?: { eventType?: string; evaluation?: { attendedMinutes: number | null; yellowStarPoints: number; message: string } };
+  data?: { purpose?: "CHECK_IN" | "CHECK_OUT"; eventType?: string; evaluation?: { attendedMinutes: number | null; yellowStarPoints: number; message: string } };
 };
 
 function extractToken(raw: string): string {
@@ -47,7 +46,7 @@ function extractToken(raw: string): string {
   return match ? decodeURIComponent(match[1]) : raw.trim();
 }
 
-function scanStateFrom(res: Response, json: ScanResponse): ScanState {
+function scanStateFrom(res: Response, json: ScanResponse, purpose?: "CHECK_OUT"): ScanState {
   if (res.ok) {
     const eventType = json.data?.eventType;
     const evaluation = json.data?.evaluation;
@@ -63,11 +62,13 @@ function scanStateFrom(res: Response, json: ScanResponse): ScanState {
     };
   }
   if (json.code === "NOT_REGISTERED") {
+    if (purpose === "CHECK_OUT") {
+      return { status: "error", message: "ยังไม่พบการเช็คอิน ไม่สามารถเช็คเอาท์ได้" };
+    }
     return {
       status: "unregistered",
       message: json.message ?? "คุณยังไม่ได้ลงทะเบียนกิจกรรมนี้",
       activityId: json.activity?.id,
-      activityTitle: json.activity?.title,
       canRegister: json.activity?.status === "PUBLISHED",
     };
   }
@@ -77,26 +78,47 @@ function scanStateFrom(res: Response, json: ScanResponse): ScanState {
   };
 }
 
-export function ScanClient() {
+export function ScanClient({ academicYearId, academicYearCode }: { academicYearId: string; academicYearCode: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token") ?? "";
+  const yearQuery = `academicYearId=${encodeURIComponent(academicYearId)}`;
   const [manualToken, setManualToken] = useState("");
   const [scanning, setScanning] = useState(false);
+  const checkoutRequest = useRef<AbortController | null>(null);
   const [state, setState] = useState<ScanState>({
     status: "loading",
-    message: "กำลังบันทึกเวลา...",
+    message: "กำลังตรวจสอบ QR Code...",
   });
 
   useEffect(() => {
     if (!token) return;
 
     let active = true;
+    const controller = new AbortController();
     (async () => {
+      const preview = await fetch(`/api/attendance/scan?token=${encodeURIComponent(token)}&academicYearId=${encodeURIComponent(academicYearId)}`, {
+        cache: "no-store", signal: controller.signal,
+      });
+      const previewJson: ScanResponse = await preview.json().catch(() => ({}));
+      if (!active) return;
+      if (!preview.ok) {
+        setState({ status: "error", message: previewJson.message ?? "ตรวจสอบ QR Code ไม่สำเร็จ" });
+        return;
+      }
+      if (previewJson.data?.purpose === "CHECK_OUT") {
+        setState({ status: "ready_checkout", message: "", token });
+        return;
+      }
+      if (previewJson.data?.purpose !== "CHECK_IN") {
+        setState({ status: "error", message: "ประเภท QR Code ไม่ถูกต้อง" });
+        return;
+      }
       const res = await fetch("/api/attendance/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({ token, academicYearId }),
+        signal: controller.signal,
       });
       const json = await res.json().catch(() => ({}));
       if (!active) return;
@@ -112,16 +134,20 @@ export function ScanClient() {
 
     return () => {
       active = false;
+      controller.abort();
+      checkoutRequest.current?.abort();
+      checkoutRequest.current = null;
     };
-  }, [token]);
+  }, [token, academicYearId]);
 
   const goToToken = useCallback(
     (raw: string) => {
       const value = extractToken(raw);
       if (!value) return;
-      router.replace(`/scan?token=${encodeURIComponent(value)}`);
+      setState({ status: "loading", message: "กำลังตรวจสอบ QR Code..." });
+      router.replace(`/scan?token=${encodeURIComponent(value)}&${yearQuery}`);
     },
-    [router],
+    [router, yearQuery],
   );
 
   function submitManual(e: React.FormEvent<HTMLFormElement>) {
@@ -129,11 +155,30 @@ export function ScanClient() {
     goToToken(manualToken);
   }
 
+  async function confirmCheckOut() {
+    if (state.status !== "ready_checkout" || state.token !== token || checkoutRequest.current) return;
+    const controller = new AbortController();
+    checkoutRequest.current = controller;
+    setState({ status: "loading", message: "กำลังบันทึก Check-out..." });
+    try {
+      const res = await fetch("/api/attendance/scan", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, academicYearId }), signal: controller.signal,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!controller.signal.aborted) setState(scanStateFrom(res, json, "CHECK_OUT"));
+    } catch {
+      if (!controller.signal.aborted) setState({ status: "error", message: "ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ กรุณาสแกนอีกครั้ง" });
+    } finally {
+      if (checkoutRequest.current === controller) checkoutRequest.current = null;
+    }
+  }
+
   async function registerAndCheckIn() {
     const activityId = state.activityId;
     if (!activityId) return;
 
-    setState({ status: "loading", message: "กำลังลงทะเบียนกิจกรรม..." });
+    setState({ status: "loading", message: "กำลังเช็คอิน..." });
     try {
       const reg = await fetch(
         `/api/activities/${activityId}/participations`,
@@ -151,7 +196,7 @@ export function ScanClient() {
       const res = await fetch("/api/attendance/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({ token, academicYearId }),
       });
       const json = await res.json().catch(() => ({}));
       setState(scanStateFrom(res, json));
@@ -173,7 +218,7 @@ export function ScanClient() {
           บันทึกการเข้างาน (QR Code)
         </CardTitle>
         <CardDescription className="text-xs">
-          สแกน QR Code จากหน้าจอผู้จัดเพื่อบันทึกเวลา เช็คอิน / เช็คเอาท์
+          ปีการศึกษา {academicYearCode} · สแกน QR Code จากหน้าจอผู้จัดเพื่อบันทึกเวลา เช็คอิน / เช็คเอาท์
         </CardDescription>
       </CardHeader>
 
@@ -231,6 +276,11 @@ export function ScanClient() {
           </div>
         ) : (
           <div className="space-y-4">
+            {state.status === "ready_checkout" && state.token === token && (
+              <Button type="button" onClick={confirmCheckOut} className="w-full gap-2 py-5">
+                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />ยืนยัน Check-out
+              </Button>
+            )}
             {state.status === "loading" && (
               <div className="flex flex-col items-center justify-center py-6 text-center">
                 <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
@@ -272,34 +322,17 @@ export function ScanClient() {
 
             {state.status === "unregistered" && (
               <div className="space-y-3">
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle className="font-semibold">ยังไม่ได้ลงทะเบียน</AlertTitle>
-                  <AlertDescription className="text-xs">
-                    {state.message}
-                  </AlertDescription>
-                </Alert>
-
-                {state.activityTitle && (
-                  <div className="rounded-lg border p-3 text-xs">
-                    <p className="text-muted-foreground">กิจกรรม:</p>
-                    <p className="text-sm font-semibold text-foreground mt-0.5">
-                      {state.activityTitle}
-                    </p>
-                  </div>
-                )}
-
                 {state.canRegister ? (
                   <Button
                     onClick={registerAndCheckIn}
                     className="w-full gap-2 py-5"
                   >
-                    <Sparkles className="h-4 w-4" />
-                    ลงทะเบียนกิจกรรมนี้แล้วเช็คอินทันที
+                    <CheckCircle2 className="h-4 w-4" />
+                    Check-in เข้างาน
                   </Button>
                 ) : (
                   <p className="text-center text-xs text-muted-foreground">
-                    กิจกรรมนี้ยังไม่เปิดรับลงทะเบียน กรุณาติดต่อผู้จัดงาน
+                    กิจกรรมนี้ยังไม่เปิดให้เช็คอิน กรุณาติดต่อผู้จัดงาน
                   </p>
                 )}
               </div>
@@ -310,18 +343,20 @@ export function ScanClient() {
 
       <CardFooter className="flex flex-wrap justify-center gap-2 border-t pt-4">
         {token && state.status !== "loading" && (
-          <Button variant="outline" size="sm" render={<Link href="/scan" />}>สแกนอีกครั้ง</Button>
+          <Button variant="outline" size="sm" nativeButton={false} render={<Link href={`/scan?${yearQuery}`} />}>สแกนอีกครั้ง</Button>
         )}
         <Button
           variant="outline"
           size="sm"
-          render={<Link href="/dashboard/activities">หน้ารวมกิจกรรม</Link>}
+          nativeButton={false}
+          render={<Link href={`/dashboard/activities?${yearQuery}`}>หน้ารวมกิจกรรม</Link>}
         />
         <Button
           variant="default"
           size="sm"
+          nativeButton={false}
           render={
-            <Link href="/dashboard" className="gap-1">
+            <Link href={`/dashboard?${yearQuery}`} className="gap-1">
               ไปที่แดชบอร์ด
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>

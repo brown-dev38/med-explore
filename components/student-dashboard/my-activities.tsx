@@ -13,9 +13,11 @@ import {
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getStudentDashboardContext, type StudentTarget } from "@/lib/student-dashboard";
+import { getStudentYearContext } from "@/lib/student-academic-years";
 import { formatThaiDateTime } from "@/lib/datetime";
 import { attendanceMinutesFromRecords } from "@/lib/attendance-calculation";
-import { isIncompleteCompletedParticipation } from "@/lib/student-activity-filters";
+import { isIncompleteCompletedParticipation, type StudentYearPageProps } from "@/lib/student-activity-filters";
+import { StudentYearSelector } from "@/components/student-year-selector";
 import type { HelperStatus, ParticipationStatus } from "@/types/activity";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -48,7 +50,7 @@ const HELPER_STATUS_CONFIG: Record<
   CANCELLED: { label: "ยกเลิก", variant: "destructive" },
 };
 
-export default function MyActivitiesPage({ target }: { target?: StudentTarget }) {
+export default function MyActivitiesPage({ target, searchParams }: StudentYearPageProps & { target?: StudentTarget }) {
   return (
     <Suspense
       fallback={
@@ -57,31 +59,33 @@ export default function MyActivitiesPage({ target }: { target?: StudentTarget })
         </div>
       }
     >
-      <MyActivitiesContent target={target} />
+      <MyActivitiesContent target={target} searchParams={searchParams} />
     </Suspense>
   );
 }
 
-async function MyActivitiesContent({ target }: { target?: StudentTarget }) {
-  const { user, readOnly } = await getStudentDashboardContext(target);
+async function MyActivitiesContent({ target, searchParams }: StudentYearPageProps & { target?: StudentTarget }) {
+  const { user, readOnly, basePath } = await getStudentDashboardContext(target);
+  const { years, selectedYear } = await getStudentYearContext(searchParams);
+  const activitiesHref = selectedYear ? `/dashboard/activities?academicYearId=${selectedYear.id}` : "/dashboard/activities";
 
-  const [participations, helperDuties, standaloneWorks] = await Promise.all([
+  const [participations, helperDuties, standaloneWorks] = selectedYear ? await Promise.all([
     prisma.participation.findMany({
-      where: { userId: BigInt(user.id) },
+      where: { userId: BigInt(user.id), activity: { academicYearId: BigInt(selectedYear.id) } },
       include: { activity: true, attendanceRecords: true, starTransactions: true },
       orderBy: { createdAt: "desc" },
     }),
     prisma.helperAssignment.findMany({
-      where: { userId: BigInt(user.id) },
+      where: { userId: BigInt(user.id), activity: { academicYearId: BigInt(selectedYear.id) } },
       include: { activity: true, starTransactions: true },
       orderBy: { createdAt: "desc" },
     }),
     prisma.starTransaction.findMany({
-      where: { userId: BigInt(user.id), starType: "GREEN", helperAssignmentId: null, participationId: null, redemptionId: null },
+      where: { userId: BigInt(user.id), academicYearId: BigInt(selectedYear.id), starType: "GREEN", helperAssignmentId: null, participationId: null, redemptionId: null },
       include: { academicYear: { select: { code: true } } },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     }),
-  ]);
+  ]) : [[], [], []];
 
   return (
     <div className="space-y-6">
@@ -94,15 +98,18 @@ async function MyActivitiesContent({ target }: { target?: StudentTarget }) {
             {readOnly ? "รายการเข้าร่วมกิจกรรมและช่วยงานของนิสิตที่เลือก" : "รายการกิจกรรมที่คุณลงทะเบียนเข้าร่วม และหน้าที่ช่วยเหลือกิจกรรมเพื่อสะสมดาว"}
           </p>
         </div>
-        {!readOnly && (<Button
+        <StudentYearSelector years={years} selectedId={selectedYear?.id ?? null} basePath={`${basePath}/my-activities`} />
+      </div>
+      {selectedYear?.status === "CLOSED" && <p role="status" className="rounded-xl bg-muted/50 p-4 text-sm text-muted-foreground">ปีการศึกษานี้ปิดแล้ว แสดงประวัติการเข้าร่วมและช่วยงานเฉพาะปี {selectedYear.code}</p>}
+      {!readOnly && selectedYear?.status === "ACTIVE" && (<Button
+          nativeButton={false}
           render={
-            <Link href="/dashboard/activities" className="gap-2">
+            <Link href={activitiesHref} className="gap-2">
               <Sparkles className="h-4 w-4" />
               ลงทะเบียนกิจกรรมใหม่
             </Link>
           }
         />)}
-      </div>
 
       <Tabs defaultValue="participations" className="w-full">
         <TabsList className="mb-4">
@@ -137,11 +144,12 @@ async function MyActivitiesContent({ target }: { target?: StudentTarget }) {
                 <p className="text-xs text-muted-foreground mt-1 mb-4 max-w-sm">
                   {readOnly ? "ประวัติจะแสดงเมื่อนิสิตลงทะเบียนกิจกรรม" : "สามารถดูกิจกรรมที่เปิดรับและสแกนเข้าร่วมได้ที่หน้ารวมกิจกรรม"}
                 </p>
-                {!readOnly && (<Button
+                {!readOnly && selectedYear?.status === "ACTIVE" && (<Button
                   variant="outline"
                   size="sm"
+                  nativeButton={false}
                   render={
-                    <Link href="/dashboard/activities" className="gap-1.5">
+                    <Link href={activitiesHref} className="gap-1.5">
                       ดูกิจกรรมที่เปิดรับลงทะเบียน
                       <ArrowRight className="h-3.5 w-3.5" />
                     </Link>

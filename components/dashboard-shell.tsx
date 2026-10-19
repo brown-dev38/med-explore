@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 import {
   LayoutDashboard,
@@ -78,6 +78,7 @@ function DashboardNav({
   collapsed?: boolean;
 }) {
   const pathname = usePathname();
+  const academicYearId = useSearchParams().get("academicYearId");
 
   const isActive = (item: DashboardNavItem) =>
     item.exact
@@ -91,7 +92,7 @@ function DashboardNav({
         const link = (
           <Link
             key={item.href}
-            href={item.href}
+            href={pathname.startsWith("/dashboard") && academicYearId && (item.href.startsWith("/dashboard") || item.href === "/scan") ? `${item.href}?academicYearId=${encodeURIComponent(academicYearId)}` : item.href}
             onClick={onNavigate}
             aria-current={active ? "page" : undefined}
             className={`flex min-h-11 items-center rounded-xl py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${collapsed ? "justify-center px-0" : "gap-3 px-3"} ${
@@ -133,6 +134,7 @@ function NavFallback({ items, collapsed = false }: { items: DashboardNavItem[]; 
 
 function DashboardBreadcrumb({ items }: { items: DashboardNavItem[] }) {
   const pathname = usePathname();
+  const academicYearId = useSearchParams().get("academicYearId");
   const crumbs = dashboardBreadcrumbs(pathname, items);
 
   return (
@@ -149,7 +151,7 @@ function DashboardBreadcrumb({ items }: { items: DashboardNavItem[] }) {
                   <span className="max-w-[min(60vw,20rem)] truncate" title={crumb.label}>{crumb.label}</span>
                 </span>
               ) : (
-                <Link href={crumb.href} className="flex min-w-0 items-center gap-2 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <Link href={pathname.startsWith("/dashboard") && academicYearId ? `${crumb.href}?academicYearId=${encodeURIComponent(academicYearId)}` : crumb.href} className="flex min-w-0 items-center gap-2 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   {index === 0 && <LayoutDashboard className="size-4 shrink-0" aria-hidden="true" />}
                   <span className="max-w-[min(60vw,20rem)] truncate" title={crumb.label}>{crumb.label}</span>
                 </Link>
@@ -192,7 +194,7 @@ export function DashboardShell({
     <div className="min-h-dvh bg-background">
       <a href="#dashboard-content" className="sr-only z-90 rounded-lg bg-primary p-3 text-primary-foreground focus:not-sr-only focus:fixed focus:left-4 focus:top-4">ข้ามไปเนื้อหาหลัก</a>
       <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
-        <DialogContent id="dashboard-mobile-sidebar" className="top-0 left-0 flex h-dvh max-h-dvh w-80 max-w-[calc(100%-3rem)] translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-r p-0">
+        <DialogContent id="dashboard-mobile-sidebar" variant="drawer">
           <DialogHeader className="border-b p-5 pr-12">
             <DialogTitle className="flex items-center gap-2"><Star className="size-5 fill-amber-300 text-primary" />{brand}</DialogTitle>
             <DialogDescription>{subtitle ?? "เมนูการใช้งาน"}</DialogDescription>

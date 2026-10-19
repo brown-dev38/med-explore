@@ -6,7 +6,7 @@ import { deleteActivity, DeletionError } from "@/lib/admin-deletion";
 import { activityUpdateSchema } from "@/lib/validation";
 import { errorResponse, parseId, successResponse } from "@/lib/api";
 import { toActivityDto } from "@/lib/activities";
-import { attendanceTransaction, recalculateActivityAttendance } from "@/lib/attendance";
+import { AttendanceError, attendanceTransaction, recalculateActivityAttendance } from "@/lib/attendance";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -71,6 +71,14 @@ export async function PATCH(req: Request, { params }: RouteContext) {
   const { title, description, location, startsAt, endsAt, minMinutes, status } =
     parsed.data;
 
+  const editsSchedule = startsAt !== undefined || endsAt !== undefined || minMinutes !== undefined;
+  if (editsSchedule && !hasRole(user, ROLES.ADMIN) && !hasRole(user, ROLES.ORGANIZER)) {
+    return errorResponse("เฉพาะผู้ดูแลและผู้จัดกิจกรรมเท่านั้นที่แก้ไขเวลาและเกณฑ์ขั้นต่ำได้", 403);
+  }
+  if (editsSchedule && current.status !== "DRAFT") {
+    return errorResponse("แก้ไขเวลาและเกณฑ์ขั้นต่ำได้เฉพาะกิจกรรมฉบับร่างเท่านั้น", 409);
+  }
+
   const editsDetails =
     title !== undefined ||
     description !== undefined ||
@@ -103,18 +111,36 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
   try {
     const updated = await attendanceTransaction(async (tx) => {
-      const activity = await tx.activity.update({ where: { id: current.id }, data });
+      const activity = await tx.activity.update({
+        where: {
+          id: current.id,
+          // Enforce draft status and the validated timing values atomically, including concurrent edits.
+          ...(editsSchedule ? { status: "DRAFT", startsAt: current.startsAt, endsAt: current.endsAt, minMinutes: current.minMinutes } : {}),
+        },
+        data,
+      });
       if (minMinutes !== undefined || status !== undefined) {
         await recalculateActivityAttendance(tx, current.id, BigInt(user.id));
       }
       await tx.auditLog.create({ data: {
         actorId: BigInt(user.id), action: "activity.update", entityType: "Activity", entityId: activity.id,
-        details: { title: activity.title, status: activity.status },
+        details: {
+          title: activity.title, status: activity.status,
+          ...(editsSchedule ? {
+            previousStartsAt: current.startsAt.toISOString(), previousEndsAt: current.endsAt.toISOString(),
+            startsAt: activity.startsAt.toISOString(), endsAt: activity.endsAt.toISOString(),
+            previousMinMinutes: current.minMinutes, minMinutes: activity.minMinutes,
+          } : {}),
+        },
       } });
       return activity;
     });
     return successResponse(toActivityDto(updated));
   } catch (error) {
+    if (editsSchedule && (error as { code?: string }).code === "P2025") {
+      return errorResponse("สถานะ เวลา หรือเกณฑ์ขั้นต่ำเปลี่ยนไปแล้ว กรุณารีเฟรชและลองใหม่", 409);
+    }
+    if (error instanceof AttendanceError) return errorResponse(error.message, error.status);
     console.error("Activity update failed:", error);
     return errorResponse("แก้ไขกิจกรรมและคำนวณดาวไม่สำเร็จ กรุณาลองใหม่", 500);
   }

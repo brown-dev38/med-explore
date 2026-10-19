@@ -63,6 +63,8 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { ActivityScheduleEditor } from "@/components/activity-schedule-editor";
+import { ActivityQrDisplay } from "@/components/activity-qr-display";
 
 const STATUS_CONFIG: Record<
   ActivityStatus,
@@ -713,6 +715,9 @@ export function ActivityDetail({
             </div>
 
             <div className="flex flex-wrap gap-2">
+              {status === "DRAFT" && activity.status === "DRAFT" && (
+                <ActivityScheduleEditor activity={activity} disabled={busy} />
+              )}
               {status === "DRAFT" && (
                 <Button
                   onClick={() =>
@@ -827,15 +832,8 @@ export function ActivityDetail({
 
           {qr && (
             <div className="mt-6 flex flex-col items-center gap-6 rounded-xl border border-border bg-muted/30 p-6 sm:flex-row sm:items-start">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={qr.qrDataUrl}
-                alt="QR Code"
-                width={200}
-                height={200}
-                className="rounded-xl border bg-white p-2 shadow-sm"
-              />
-              <div className="space-y-3 text-sm flex-1">
+              <ActivityQrDisplay key={qr.id} qr={qr} activityTitle={activity.title} remaining={remaining} />
+              <div className="min-w-0 flex-1 space-y-3 text-sm">
                 <div className="flex items-center gap-2">
                   <Badge variant="default" className="text-xs">
                     {qr.purpose === "CHECK_IN" ? "เช็คอิน" : "เช็คเอาท์"}

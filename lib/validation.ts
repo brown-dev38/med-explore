@@ -7,6 +7,8 @@ const dateString = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, "รูปแบบวันที่ไม่ถูกต้อง (YYYY-MM-DD)");
 
 const statusEnum = z.enum(["DRAFT", "ACTIVE", "CLOSED"]);
+const positiveDatabaseId = z.string().regex(/^[1-9]\d{0,18}$/, "รหัสไม่ถูกต้อง")
+  .refine((value) => /^[1-9]\d{0,18}$/.test(value) && BigInt(value) <= BigInt("9223372036854775807"), "รหัสไม่ถูกต้อง");
 
 export const academicYearCreateSchema = z
   .object({
@@ -106,6 +108,7 @@ export const qrSessionCreateSchema = z.object({
 
 export const attendanceScanSchema = z.object({
   token: z.string().trim().min(1, "ไม่พบรหัส QR"),
+  academicYearId: positiveDatabaseId.optional(),
 });
 
 export const attendanceManualSchema = z.object({
@@ -145,9 +148,6 @@ export const helperUpdateSchema = z.object({
   status: z.enum(["ASSIGNED", "COMPLETED", "CANCELLED"]),
   description: z.string().trim().max(1000).nullable().optional(),
 });
-
-const positiveDatabaseId = z.string().regex(/^[1-9]\d{0,18}$/, "รหัสไม่ถูกต้อง")
-  .refine((value) => /^[1-9]\d{0,18}$/.test(value) && BigInt(value) <= BigInt("9223372036854775807"), "รหัสไม่ถูกต้อง");
 
 export const greenWorkAwardSchema = z.object({
   userId: positiveDatabaseId,

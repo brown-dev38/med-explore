@@ -62,7 +62,7 @@ async function UpcomingActivitiesContent({ searchParams, target }: StudentYearPa
       </div>
 
       <StudentYearSelector years={years} selectedId={selectedYear?.id ?? null} basePath={`${basePath}/upcoming`} />
-      <Button variant="outline" size="sm" render={<Link href={selectedYear ? `${basePath}?academicYearId=${selectedYear.id}` : basePath} />}>กลับหน้าภาพรวม</Button>
+      <Button variant="outline" size="sm" nativeButton={false} render={<Link href={selectedYear ? `${basePath}?academicYearId=${selectedYear.id}` : basePath} />}>กลับหน้าภาพรวม</Button>
 
       {activities.length === 0 ? (
         <Card className="border-dashed">

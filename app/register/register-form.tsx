@@ -61,7 +61,7 @@ export default function RegisterForm() {
   if (success) return (
     <div className="space-y-5">
       <Alert className="border-primary/20 bg-primary/5"><CheckCircle2 className="text-primary" /><AlertTitle>สมัครสมาชิกสำเร็จ</AlertTitle><AlertDescription>บัญชีของคุณพร้อมใช้งานแล้ว เข้าสู่ระบบเพื่อเริ่มลงทะเบียนกิจกรรม</AlertDescription></Alert>
-      <Button className="w-full" render={<Link href="/login" />}>ไปเข้าสู่ระบบ</Button>
+      <Button className="w-full" nativeButton={false} render={<Link href="/login" />}>ไปเข้าสู่ระบบ</Button>
     </div>
   );
 

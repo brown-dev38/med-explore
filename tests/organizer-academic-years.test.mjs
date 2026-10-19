@@ -11,19 +11,30 @@ function routes(user) {
   const calls = [];
   let current = { ...year };
   const academicYear = {
-    findMany: async () => { calls.push("list"); return [current]; },
+    findMany: async ({ where } = {}) => {
+      if (where?.status === "ACTIVE") { calls.push("closePrevious"); return []; }
+      calls.push("list"); return [current];
+    },
     findUnique: async ({ where }) => { calls.push("find"); return where.id === 1n || where.code === current.code ? current : null; },
     create: async ({ data }) => { calls.push("create"); return { ...year, ...data }; },
     update: async ({ data }) => { calls.push("update"); current = { ...current, ...data }; return current; },
     updateMany: async () => { calls.push("closePrevious"); return { count: 1 }; },
   };
-  const prisma = { academicYear, $transaction: (fn) => fn({ academicYear }) };
+  const prisma = {
+    academicYear, $queryRaw: async () => [],
+    rewardRedemption: { findMany: async () => [] },
+    rewardTier: { updateMany: async () => ({ count: 0 }) },
+    starTransaction: { groupBy: async () => [] },
+    auditLog: { create: async () => {} },
+    $transaction: (fn) => fn(prisma),
+  };
   const mocks = {
     "@/lib/prisma": { prisma }, "@/lib/dal": { getCurrentUser: async () => user },
     "@/lib/permissions": permissions, "@/lib/validation": validation,
     "@/lib/audit": { recordAudit: async () => {} },
     "@/lib/academic-years": loadTypeScript("../lib/academic-years.ts", { "server-only": {}, "@/lib/prisma": { prisma } }),
     "@/lib/api": loadTypeScript("../lib/api.ts"),
+    "next/cache": { revalidatePath() {} },
     "@/lib/admin-deletion": { DeletionError: class extends Error {}, deleteAcademicYear: async () => { calls.push("delete"); return { id: "1" }; } },
   };
   const collection = loadTypeScript("../app/api/academic-years/route.ts", mocks);

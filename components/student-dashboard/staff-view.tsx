@@ -20,6 +20,8 @@ export function StaffStudentPage(props: StaffStudentPageProps & { area: StudentA
 
 async function StaffStudentContent({ area, params, searchParams }: StaffStudentPageProps & { area: StudentArea }) {
   const { id, view } = await params;
+  const { academicYearId } = await searchParams;
+  const yearQuery = typeof academicYearId === "string" ? `?academicYearId=${encodeURIComponent(academicYearId)}` : "";
   const target = { area, id };
   const { user, basePath } = await getStudentDashboardContext(target);
   const section = view.length === 1 && view[0] === "dashboard" ? "overview"
@@ -39,11 +41,11 @@ async function StaffStudentContent({ area, params, searchParams }: StaffStudentP
         <p className="font-semibold">{user.name} · รหัสนิสิต {"studentCode" in user ? user.studentCode ?? "—" : "—"}</p>
         <p className="text-sm text-muted-foreground">กำลังดูข้อมูลนิสิต · อ่านอย่างเดียว</p>
         <nav aria-label="ข้อมูลนิสิต" className="flex flex-wrap gap-4 text-sm">
-          {tabs.map(([key, label, href]) => <Link key={key} href={href} aria-current={section === key ? "page" : undefined} className={section === key ? "font-semibold text-primary underline underline-offset-4" : "text-muted-foreground hover:text-foreground"}>{label}</Link>)}
+          {tabs.map(([key, label, href]) => <Link key={key} href={`${href}${yearQuery}`} aria-current={section === key ? "page" : undefined} className={section === key ? "font-semibold text-primary underline underline-offset-4" : "text-muted-foreground hover:text-foreground"}>{label}</Link>)}
         </nav>
       </section>
       {section === "overview" && <Overview target={target} searchParams={searchParams} />}
-      {section === "my-activities" && <MyActivities target={target} />}
+      {section === "my-activities" && <MyActivities target={target} searchParams={searchParams} />}
       {section === "upcoming" && <Upcoming target={target} searchParams={searchParams} />}
       {section === "year-activities" && <YearActivities target={target} searchParams={searchParams} />}
       {section === "profile" && <ProfileView target={target} />}
