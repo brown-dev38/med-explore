@@ -14,10 +14,15 @@ DATABASE_PORT=3306
 # NextAuth
 NEXTAUTH_SECRET="<สุ่มด้วย `openssl rand -base64 32`>"
 NEXTAUTH_URL="http://localhost:3000"
+
+# Microsoft (ไม่บังคับ; เฉพาะองค์กรเดียว)
+MICROSOFT_TENANT_ID=""
+MICROSOFT_CLIENT_ID=""
+MICROSOFT_CLIENT_SECRET=""
 ```
 
 > `.env` ไม่ถูก commit ขึ้น git
-> หมายเหตุ: ฝั่ง client ของระบบยิง API แบบ relative URL (`lib/auth-client.ts`) จึงไม่ผูกกับค่า `NEXTAUTH_URL` — เข้าใช้งานผ่าน localhost หรือ LAN IP ก็ล็อกอินได้
+> การล็อกอินด้วยรหัสผ่านยิง API แบบ relative URL (`lib/auth-client.ts`) จึงใช้ผ่าน localhost หรือ LAN IP ได้ ส่วน Microsoft ต้องเปิดผ่าน URL หลักตาม `NEXTAUTH_URL` และลงทะเบียน callback ใน Entra ให้ตรงกัน ดู [คู่มือตั้งค่า Microsoft](microsoft-login.md)
 
 ## คำสั่งที่ใช้บ่อย
 
@@ -63,6 +68,12 @@ npx tsc --noEmit        # typecheck
 
 > ลิงก์ใน QR ใช้ origin ของหน้าที่ผู้จัดเปิดอยู่ ดังนั้นควรเปิดหน้าผู้จัดผ่าน host ที่มือถือเข้าถึงได้ (เช่น IP ใน LAN) ตอนสร้าง QR
 
+### การเปลี่ยนรหัสผ่านผ่าน LAN / reverse proxy
+
+API เปลี่ยนรหัสผ่านตรวจ Origin กับ host/protocol ของคำขอที่ผู้ใช้เปิดจริง จึงใช้ผ่าน localhost, LAN HTTP/HTTPS และ reverse proxy ได้ โดยไม่ต้องเปลี่ยน `NEXTAUTH_URL` สำหรับการเปลี่ยนรหัสผ่าน
+
+หากมี reverse proxy ให้ตั้ง `Host` หรือ `X-Forwarded-Host` เป็น public host พร้อมพอร์ตตามจริง และ `X-Forwarded-Proto` เป็น `http` หรือ `https` ตาม URL ที่ผู้ใช้เปิด Proxy ต้องเขียนทับ forwarded headers จาก client ด้วยค่าที่เชื่อถือได้ ใช้ค่าเดียวต่อ header ระบบปฏิเสธคำขอที่ Origin ไม่ตรง ไม่มี Origin หรือมี forwarded headers หลายค่าที่กำกวม Microsoft ยังต้องใช้ URL หลักที่ลงทะเบียนไว้ตามคู่มือ
+
 ## ผลตรวจสอบคุณภาพก่อนส่งงาน
 
 ```bash
@@ -73,7 +84,23 @@ npm run build         # production build (มี TypeScript check ในตั�
 
 ทั้งสามคำสั่งต้องผ่านโดยไม่มี error
 
+### ทดสอบรหัสผ่านผ่านเซิร์ฟเวอร์จริง
+
+เปิด dev server ไว้ก่อน แล้วรันทดสอบนี้ด้วย PowerShell อีกหน้าต่าง (เปลี่ยนเป็น `http://localhost:3000` หากไม่ได้เปิด HTTPS):
+
+```powershell
+$env:PASSWORD_HTTP_TEST_ORIGIN = "https://localhost:3000"
+node --test tests/password-http.integration.test.mjs
+Remove-Item Env:PASSWORD_HTTP_TEST_ORIGIN
+```
+
+ต้องเป็นเซิร์ฟเวอร์และฐานข้อมูลบนเครื่องตัวเองเท่านั้น การทดสอบสร้างบัญชีชั่วคราวสำหรับทั้งสามบทบาท ตรวจล็อกอิน → เปลี่ยนรหัสผ่าน → รหัสเดิมเข้าไม่ได้/รหัสใหม่เข้าได้ → ออกจากระบบแล้ว session ว่างและหน้าโปรไฟล์บังคับล็อกอิน รวมถึง ADMIN ตั้งรหัสผ่าน STUDENT / ORGANIZER จากนั้นล้างเฉพาะบัญชีและ Audit Log ที่สร้างเพื่อทดสอบ ไม่ใช้รหัสผ่านของบัญชีจริง หากไม่กำหนด environment นี้ ชุดทดสอบจะข้ามการทดสอบ HTTP
+
+หลังเพิ่ม export ของตัวตรวจข้อมูลใหม่ระหว่าง `next dev` ให้ตรวจผ่าน HTTP ด้วย เพราะ dev server อาจยังอ้างโมดูลเดิมแม้ typecheck และ build ผ่าน ปัจจุบันตัวตรวจรหัสผ่านแยกอยู่ใน `lib/password-validation.ts`; หากพบอาการโมดูลค้างระหว่างพัฒนา ให้เริ่ม dev server ใหม่
+
 ## ข้อควรทราบ / ข้อจำกัด
+
+- **เปลี่ยนรหัสผ่าน**: ทุกบทบาทใช้หน้าโปรไฟล์ของตัวเอง โดยยืนยันรหัสผ่านปัจจุบันก่อน หาก STUDENT / ORGANIZER ลืมรหัสผ่าน ให้ ADMIN ตั้งใหม่ผ่านหน้าจัดการผู้ใช้ รหัสผ่าน Microsoft ต้องเปลี่ยนกับองค์กรโดยตรง
 
 - **สิทธิ์ใน JWT จะค้าง**: เมื่อแอดมินแก้บทบาท/สิทธิ์ของผู้ใช้ ผู้ใช้นั้นต้อง **ล็อกอินใหม่** จึงจะได้สิทธิ์ใหม่ (token มีอายุตาม session)
 - **`cacheComponents`**: การอ่าน session/`cookies()` ต้องอยู่ใน `<Suspense>` และห้าม `setState` แบบ synchronous ใน `useEffect`

@@ -14,6 +14,7 @@ const pageLabels: Record<string, string> = {
   profile: "โปรไฟล์",
   rewards: "ของรางวัล",
   redemptions: "คำขอแลกรางวัล",
+  reports: "รายงานประจำปี",
 };
 
 export function dashboardBreadcrumbs(

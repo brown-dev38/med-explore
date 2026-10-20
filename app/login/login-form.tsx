@@ -6,7 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AlertCircle, ArrowRight, Eye, EyeOff, Loader2, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { dashboardPathFor } from "@/lib/permissions";
-import { signInWithCredentials } from "@/lib/auth-client";
+import { getMicrosoftSignInUrl, signInWithCredentials } from "@/lib/auth-client";
+import { MicrosoftIcon } from "@/components/microsoft-icon";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getSessionNotice } from "@/lib/session-notices";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SuspendedAccountDialog } from "@/components/suspended-account-dialog";
 
-export default function LoginForm() {
+const loginErrors: Record<string, string> = {
+  CredentialsSignin: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง",
+  MicrosoftNotLinked: "บัญชี Microsoft นี้ยังไม่ได้ผูกกับระบบ กรุณาเข้าสู่ระบบด้วยรหัสผ่านเดิม แล้วผูก Microsoft ในหน้าโปรไฟล์",
+  MicrosoftTenant: "กรุณาใช้บัญชี Microsoft ขององค์กรที่ระบบกำหนด",
+  MicrosoftLinkExpired: "การผูกบัญชีหมดอายุ กรุณาเข้าสู่ระบบด้วยรหัสผ่านแล้วเริ่มใหม่ในหน้าโปรไฟล์",
+  MicrosoftUnavailable: "ไม่สามารถเข้าสู่ระบบด้วย Microsoft ได้ กรุณาลองใหม่อีกครั้ง",
+};
+
+export default function LoginForm({ microsoftEnabled = false }: { microsoftEnabled?: boolean }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/";
@@ -24,10 +33,20 @@ export default function LoginForm() {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [pending, setPending] = useState<"credentials" | "microsoft" | null>(null);
+  const loading = pending !== null;
+  const setLoading = (value: boolean) => setPending(value ? "credentials" : null);
   const [error, setError] = useState<string | null>(
-    searchParams.get("error") === "CredentialsSignin" ? "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" : null,
+    searchParams.get("error") ? loginErrors[searchParams.get("error")!] ?? "การเข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" : null,
   );
+
+  async function microsoftLogin() {
+    if (loading || !microsoftEnabled) return;
+    setPending("microsoft");
+    setError(null);
+    try { window.location.assign(await getMicrosoftSignInUrl(callbackUrl)); }
+    catch (error) { setError(error instanceof Error ? error.message : "ไม่สามารถเชื่อมต่อ Microsoft ได้"); setPending(null); }
+  }
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -70,9 +89,17 @@ export default function LoginForm() {
         </div>
       </div>
       <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? <Loader2 className="animate-spin" /> : <ArrowRight />}
-        {loading ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
+        {pending === "credentials" ? <Loader2 className="animate-spin" /> : <ArrowRight />}
+        {pending === "credentials" ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
       </Button>
+      <div className="space-y-3">
+        <div className="flex items-center gap-3 text-xs text-muted-foreground"><span className="h-px flex-1 bg-border" />หรือ<span className="h-px flex-1 bg-border" /></div>
+        <Button type="button" variant="outline" className="w-full" disabled={loading || !microsoftEnabled} onClick={microsoftLogin} aria-describedby="microsoft-login-status">
+          {pending === "microsoft" ? <Loader2 className="animate-spin" /> : <MicrosoftIcon />}
+          {pending === "microsoft" ? "กำลังเชื่อมต่อ Microsoft..." : "เข้าสู่ระบบด้วย Microsoft"}
+        </Button>
+        <p id="microsoft-login-status" className="text-center text-xs text-muted-foreground">{microsoftEnabled ? "สำหรับบัญชีองค์กรที่ผูกไว้ในโปรไฟล์แล้ว" : "Microsoft ยังไม่เปิดให้บริการ กรุณาติดต่อผู้ดูแลระบบ"}</p>
+      </div>
       <p className="border-t pt-5 text-center text-sm text-muted-foreground">ยังไม่มีบัญชี? <Link href="/register" className="font-semibold text-primary hover:underline">สมัครสมาชิก</Link></p>
     </form>
   );

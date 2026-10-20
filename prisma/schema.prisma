@@ -98,8 +98,35 @@ model User {
   surveys            SurveyResponse[]
   auditLogs          AuditLog[] @relation("AuditActor")
   createdQrSessions  QrSession[] @relation("QrCreator")
+  microsoftAccount MicrosoftAccount?
+  microsoftLinkIntents MicrosoftLinkIntent[]
 
   @@map("users")
+}
+
+model MicrosoftAccount {
+  id        BigInt   @id @default(autoincrement())
+  userId    BigInt   @unique @map("user_id")
+  tenantId  String   @map("tenant_id") @db.VarChar(36)
+  objectId  String   @map("object_id") @db.VarChar(36)
+  label     String?  @db.VarChar(191)
+  linkedAt  DateTime @default(now()) @map("linked_at") @db.DateTime(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, objectId])
+  @@map("microsoft_accounts")
+}
+
+model MicrosoftLinkIntent {
+  id        String   @id @db.Char(64)
+  userId    BigInt   @map("user_id")
+  expiresAt DateTime @map("expires_at") @db.DateTime(3)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("microsoft_link_intents")
 }
 
 model Role {

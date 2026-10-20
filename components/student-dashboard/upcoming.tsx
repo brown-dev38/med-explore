@@ -81,9 +81,9 @@ async function UpcomingActivitiesContent({ searchParams, target }: StudentYearPa
           {activities.map((activity) => (
             <Card
               key={String(activity.id)}
-              className="flex flex-col justify-between transition-all hover:shadow-md"
+              className="h-full transition-all hover:shadow-md"
             >
-              <CardHeader className="p-5 pb-3">
+              <CardHeader className="p-5">
                 <div className="flex items-start justify-between gap-3">
                   <CardTitle className="text-lg font-bold tracking-tight text-foreground line-clamp-2">
                     {activity.title}
@@ -110,8 +110,8 @@ async function UpcomingActivitiesContent({ searchParams, target }: StudentYearPa
                 </div>
               </CardHeader>
 
-              <CardFooter className="p-5 pt-0 border-t mt-3 flex justify-between items-center">
-                <span className="text-xs text-muted-foreground">
+              <CardFooter className="mt-auto flex-wrap justify-between gap-3 px-5 py-4">
+                <span className="text-xs whitespace-nowrap text-muted-foreground">
                   เวลาขั้นต่ำ: {activity.minMinutes} นาที
                 </span>
                 <Badge variant="outline" className="text-xs font-normal">

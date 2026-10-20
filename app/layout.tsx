@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { Inter, Kanit, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { SessionGuard } from "@/components/session-guard";
+import { ActivityNavigationRefresh } from "@/components/activity-navigation-refresh";
 import "./globals.css";
 
 const inter = Inter({
@@ -44,6 +45,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         {children}
         <Suspense fallback={null}><SessionGuard /></Suspense>
+        <Suspense fallback={null}><ActivityNavigationRefresh /></Suspense>
         <Toaster richColors closeButton position="top-right" duration={5000} />
       </body>
     </html>

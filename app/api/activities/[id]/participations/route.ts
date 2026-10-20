@@ -24,7 +24,9 @@ export async function GET(_req: Request, { params }: RouteContext) {
     orderBy: { createdAt: "asc" },
   });
 
-  return successResponse(participations.map(toParticipationDto));
+  const response = successResponse(participations.map(toParticipationDto));
+  response.headers.set("Cache-Control", "private, no-store");
+  return response;
 }
 
 export async function POST(req: Request, { params }: RouteContext) {

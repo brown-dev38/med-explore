@@ -111,11 +111,14 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
   try {
     const updated = await attendanceTransaction(async (tx) => {
+      if (status === "PUBLISHED" && effectiveEnd <= new Date()) {
+        throw new AttendanceError("กิจกรรมเลยเวลาสิ้นสุดแล้ว กรุณาแก้ไขเวลาก่อนเปิดรับลงทะเบียน", 409);
+      }
       const activity = await tx.activity.update({
         where: {
           id: current.id,
-          // Enforce draft status and the validated timing values atomically, including concurrent edits.
-          ...(editsSchedule ? { status: "DRAFT", startsAt: current.startsAt, endsAt: current.endsAt, minMinutes: current.minMinutes } : {}),
+          // Keep the validated status and timing values consistent with concurrent edits.
+          ...(editsSchedule || status === "PUBLISHED" ? { status: current.status, startsAt: current.startsAt, endsAt: current.endsAt, minMinutes: current.minMinutes } : {}),
         },
         data,
       });
@@ -137,7 +140,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     });
     return successResponse(toActivityDto(updated));
   } catch (error) {
-    if (editsSchedule && (error as { code?: string }).code === "P2025") {
+    if ((editsSchedule || status === "PUBLISHED") && (error as { code?: string }).code === "P2025") {
       return errorResponse("สถานะ เวลา หรือเกณฑ์ขั้นต่ำเปลี่ยนไปแล้ว กรุณารีเฟรชและลองใหม่", 409);
     }
     if (error instanceof AttendanceError) return errorResponse(error.message, error.status);

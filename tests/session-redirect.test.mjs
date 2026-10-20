@@ -27,16 +27,16 @@ test("expired sessions and active users retain their normal server navigation be
   assert.equal((await api.requireAuth()).id, "2");
 });
 
-test("automatic sign-out sends CSRF and an abort signal to both requests", async (t) => {
+test("automatic sign-out sends CSRF and one abort signal through logout and session verification", async (t) => {
   const calls = [];
   t.mock.method(globalThis, "fetch", async (url, options) => {
     calls.push({ url, options });
-    return Response.json(url.endsWith("csrf") ? { csrfToken: "test-token" } : { url: "/login" });
+    return Response.json(url.endsWith("csrf") ? { csrfToken: "test-token" } : url.endsWith("session") ? {} : { url: "/login" });
   });
   const api = loadTypeScript("../lib/auth-client.ts");
   const controller = new AbortController();
   await api.signOutClient("/login?reason=account-suspended", controller.signal);
-  assert.deepEqual(calls.map((call) => call.url), ["/api/auth/csrf", "/api/auth/signout"]);
+  assert.deepEqual(calls.map((call) => call.url), ["/api/auth/csrf", "/api/auth/signout", "/api/auth/session"]);
   assert.ok(calls.every((call) => call.options.signal === controller.signal));
   assert.equal(calls[1].options.method, "POST");
   assert.equal(calls[1].options.body.get("csrfToken"), "test-token");

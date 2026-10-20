@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { notifyActivityUpdate } from "@/lib/activity-live";
 import { toast } from "sonner";
 import {
   Calendar,
@@ -64,7 +64,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ActivityScheduleEditor } from "@/components/activity-schedule-editor";
+import { ActivityPublishButton } from "@/components/activity-publish-button";
 import { ActivityQrDisplay } from "@/components/activity-qr-display";
+import { useLiveActivityData } from "@/components/use-live-activity-data";
 
 const STATUS_CONFIG: Record<
   ActivityStatus,
@@ -98,9 +100,8 @@ export function ActivityDetail({
   participants: ParticipationDto[];
   initialHelpers?: HelperAssignmentDto[];
 }) {
-  const router = useRouter();
   const [status, setStatus] = useState<ActivityStatus>(activity.status);
-  const [rows, setRows] = useState(participants);
+  const { data: rows, refresh: refreshParticipants, failed: participantsRefreshFailed } = useLiveActivityData(`/api/activities/${activity.id}/participations`, participants, 5000);
   const [helpers, setHelpers] = useState<HelperAssignmentDto[]>(initialHelpers);
   const [purpose, setPurpose] = useState<QrPurpose>("CHECK_IN");
   const [ttl, setTtl] = useState("15");
@@ -193,13 +194,10 @@ export function ActivityDetail({
   }, [rows, activity.minMinutes]);
 
   async function reloadParticipants(silent = false) {
-    const res = await fetch(`/api/activities/${activity.id}/participations`);
-    if (res.ok) {
-      const json = await res.json();
-      setRows(json.data);
-      if (!silent) {
-        toast.success("อัปเดตข้อมูลผู้เข้าร่วมล่าสุดแล้ว");
-      }
+    const ok = await refreshParticipants();
+    if (!silent) {
+      if (ok) toast.success("อัปเดตข้อมูลผู้เข้าร่วมล่าสุดแล้ว");
+      else toast.warning("โหลดข้อมูลล่าสุดไม่สำเร็จ ระบบจะลองใหม่อัตโนมัติ");
     }
   }
 
@@ -217,7 +215,7 @@ export function ActivityDetail({
       }
       toast.success("ตรวจสอบเวลาและคำนวณดาวของผู้เข้าร่วมทุกคนเรียบร้อยแล้ว");
       await reloadParticipants(true);
-      router.refresh();
+      notifyActivityUpdate();
     } catch {
       toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
     } finally {
@@ -251,7 +249,7 @@ export function ActivityDetail({
       }
       setStatus(next);
       toast.success("อัปเดตสถานะกิจกรรมเรียบร้อยแล้ว");
-      router.refresh();
+      notifyActivityUpdate();
     } catch {
       toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
     } finally {
@@ -392,7 +390,7 @@ export function ActivityDetail({
       setSelectedCandidates([]);
       setCandidatesOpen(false);
       await reloadParticipants();
-      router.refresh();
+      notifyActivityUpdate();
     } catch {
       toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
     } finally {
@@ -436,7 +434,7 @@ export function ActivityDetail({
           toast.success(`บันทึกเวลาให้ผู้เข้าร่วม ${json.data.updated} คนแล้ว`);
           setBulkTimeOpen(false);
           await reloadParticipants();
-          router.refresh();
+          notifyActivityUpdate();
         } catch {
           toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
         } finally {
@@ -490,7 +488,7 @@ export function ActivityDetail({
       );
       setEditingTime(null);
       await reloadParticipants();
-      router.refresh();
+      notifyActivityUpdate();
     } catch {
       toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
     } finally {
@@ -552,7 +550,7 @@ export function ActivityDetail({
       toast.success("มอบหมายนิสิตช่วยงานเรียบร้อยแล้ว");
       setAddHelperOpen(false);
       await reloadHelpers(true);
-      router.refresh();
+      notifyActivityUpdate();
     } catch {
       toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
     } finally {
@@ -586,7 +584,7 @@ export function ActivityDetail({
             `ยืนยันการช่วยงานและมอบ 1 ดาวสีเขียวให้ ${helper.userName} เรียบร้อยแล้ว`,
           );
           await reloadHelpers(true);
-          router.refresh();
+          notifyActivityUpdate();
         } catch {
           toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
         } finally {
@@ -622,7 +620,7 @@ export function ActivityDetail({
           }
           toast.success(`ยกเลิกการช่วยงานของ ${helper.userName} แล้ว`);
           await reloadHelpers(true);
-          router.refresh();
+          notifyActivityUpdate();
         } catch {
           toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
         } finally {
@@ -654,7 +652,7 @@ export function ActivityDetail({
           }
           toast.success(`ลบรายชื่อ ${helper.userName} เรียบร้อยแล้ว`);
           await reloadHelpers(true);
-          router.refresh();
+          notifyActivityUpdate();
         } catch {
           toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
         } finally {
@@ -719,8 +717,10 @@ export function ActivityDetail({
                 <ActivityScheduleEditor activity={activity} disabled={busy} />
               )}
               {status === "DRAFT" && (
-                <Button
-                  onClick={() =>
+                <ActivityPublishButton
+                  endsAt={activity.endsAt}
+                  size="default"
+                  onPublish={() =>
                     promptChangeStatus(
                       "PUBLISHED",
                       `เปิดรับลงทะเบียน: ${activity.title}`,
@@ -728,11 +728,7 @@ export function ActivityDetail({
                     )
                   }
                   disabled={busy}
-                  className="gap-1.5"
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  เปิดรับลงทะเบียน
-                </Button>
+                />
               )}
               {status === "PUBLISHED" && (
                 <>
@@ -967,6 +963,9 @@ export function ActivityDetail({
                     </CardTitle>
                     <CardDescription className="text-xs">
                       เกณฑ์เวลาสะสมดาวสีเหลืองขั้นต่ำ {activity.minMinutes} นาที
+                      <span className="mt-1 block" role="status">
+                        {participantsRefreshFailed ? "เชื่อมต่อข้อมูลล่าสุดไม่ได้ กำลังลองใหม่อัตโนมัติ" : "อัปเดตรายชื่อและเวลาอัตโนมัติทุก 5 วินาที"}
+                      </span>
                     </CardDescription>
                   </div>
                 </div>

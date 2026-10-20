@@ -52,7 +52,7 @@ async function UsersContent() {
           ค้นหา แก้ไขโปรไฟล์ มอบบทบาท และปิด/เปิดบัญชีผู้ใช้
         </p>
       </div>
-      <UsersTable initialResult={initialResult} currentUserId={actor.id} canDeleteUsers={hasRole(actor, ROLES.ADMIN)} />
+      <UsersTable initialResult={initialResult} currentUserId={actor.id} canDeleteUsers={hasRole(actor, ROLES.ADMIN)} canResetPasswords={hasRole(actor, ROLES.ADMIN)} />
     </div>
   );
 }

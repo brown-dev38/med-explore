@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   Calendar,
@@ -26,6 +25,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { useLiveActivityData } from "@/components/use-live-activity-data";
+import { notifyActivityUpdate } from "@/lib/activity-live";
 
 export function ActivitiesBrowser({
   initial,
@@ -34,8 +35,7 @@ export function ActivitiesBrowser({
   initial: ActivityListItem[];
   academicYearId: string;
 }) {
-  const router = useRouter();
-  const [items, setItems] = useState(initial);
+  const { data: items, refresh } = useLiveActivityData(`/api/activities?academicYearId=${encodeURIComponent(academicYearId)}`, initial);
   const [busy, setBusy] = useState(false);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -45,14 +45,7 @@ export function ActivitiesBrowser({
   } | null>(null);
 
   async function reload() {
-    try {
-      const res = await fetch(`/api/activities?academicYearId=${encodeURIComponent(academicYearId)}`);
-      if (!res.ok) throw new Error("refresh failed");
-      const json = await res.json();
-      setItems(json.data);
-    } catch {
-      toast.warning("บันทึกแล้ว แต่โหลดรายการล่าสุดไม่สำเร็จ กรุณารีเฟรชหน้าจอ");
-    }
+    if (!await refresh()) toast.warning("บันทึกแล้ว กำลังรอเชื่อมต่อเพื่ออัปเดตรายการล่าสุด");
   }
 
   async function handleUnregister() {
@@ -73,7 +66,7 @@ export function ActivitiesBrowser({
       );
       setTargetParticipation(null);
       await reload();
-      router.refresh();
+      notifyActivityUpdate();
       return true;
     } catch {
       toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
@@ -122,7 +115,7 @@ export function ActivitiesBrowser({
             return (
               <Card
                 key={activity.id}
-                className="flex flex-col justify-between transition-all hover:shadow-md"
+                className="@container/activity-card h-full transition-all hover:shadow-md"
               >
                 <CardHeader className="p-5 pb-3">
                   <div className="flex items-start justify-between gap-3">
@@ -192,14 +185,15 @@ export function ActivitiesBrowser({
                   )}
                 </CardContent>
 
-                <CardFooter className="p-5 pt-0 flex flex-wrap items-center justify-between gap-2 border-t mt-2">
-                  <div className="flex flex-wrap items-center gap-2">
+                <CardFooter className="mt-auto flex-col items-stretch gap-3 px-5 py-4 @md/activity-card:flex-row @md/activity-card:items-center @md/activity-card:justify-between">
+                  <div className="flex min-w-0 items-center">
                     {!checkedOut ? (
                       <Button
                         nativeButton={false}
+                        className="h-auto min-h-10 w-full gap-2 py-2 whitespace-normal"
                         render={
                           <Link href={`/scan?academicYearId=${encodeURIComponent(academicYearId)}`}>
-                            <QrCode className="mr-1.5 h-4 w-4" />
+                            <QrCode className="size-4" aria-hidden="true" />
                             {checkedIn
                               ? "สแกน QR Check-out"
                               : "สแกน QR Check-in"}
@@ -223,9 +217,9 @@ export function ActivitiesBrowser({
                       size="sm"
                       onClick={() => promptUnregister(mine.id, activity.title)}
                       disabled={busy}
-                      className="text-muted-foreground hover:text-destructive"
+                      className="h-auto min-h-10 gap-2 py-2 whitespace-normal text-muted-foreground hover:text-destructive"
                     >
-                      <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                      <Trash2 className="size-3.5" aria-hidden="true" />
                       ยกเลิกการลงทะเบียน
                     </Button>
                   )}

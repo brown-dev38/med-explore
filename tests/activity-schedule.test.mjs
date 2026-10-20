@@ -13,7 +13,7 @@ const schedule = { startsAt: "2026-11-02T02:00:00.000Z", endsAt: "2026-11-02T04:
 const principal = (role) => ({ id: "7", roles: [role], permissions: role === "ORGANIZER" ? ["activity.manage"] : [] });
 
 function routes(user = principal("ADMIN"), options = {}) {
-  let current = { ...fixture, status: options.status ?? "DRAFT" };
+  let current = { ...fixture, ...options.activity, status: options.status ?? "DRAFT" };
   const calls = [];
   const audits = [];
   const api = loadTypeScript("../app/api/activities/[id]/route.ts", {
@@ -27,8 +27,12 @@ function routes(user = principal("ADMIN"), options = {}) {
     "@/lib/api": loadTypeScript("../lib/api.ts"),
     "@/lib/activities": loadTypeScript("../lib/activities.ts", { "server-only": {} }),
     "@/lib/attendance": {
-      AttendanceError: class extends Error {},
-      attendanceTransaction: async (work) => work({
+      AttendanceError: class extends Error {
+        constructor(message, status) { super(message); this.status = status; }
+      },
+      attendanceTransaction: async (work) => {
+        options.beforeTransaction?.();
+        return work({
         activity: { update: async ({ where, data }) => {
           if (options.concurrentChange) current = { ...current, ...options.concurrentChange };
           const matches = Object.entries(where).every(([key, value]) => value instanceof Date
@@ -39,7 +43,8 @@ function routes(user = principal("ADMIN"), options = {}) {
           return { ...current };
         } },
         auditLog: { create: async ({ data }) => { audits.push(data); } },
-      }),
+        });
+      },
       recalculateActivityAttendance: async () => { calls.push("recalculate"); },
     },
   });
@@ -50,6 +55,62 @@ function routes(user = principal("ADMIN"), options = {}) {
     }), { params: Promise.resolve({ id }) }),
   };
 }
+
+test("publication rejects drafts at or after their end time without updating status or attendance", async (context) => {
+  const now = new Date("2026-11-01T04:00:00Z");
+  context.mock.timers.enable({ apis: ["Date"], now });
+  for (const role of ["ADMIN", "ORGANIZER"]) {
+    for (const endsAt of [now, new Date(now.getTime() - 1)]) {
+      const api = routes(principal(role), { activity: { endsAt } });
+      const response = await api.patch({ status: "PUBLISHED" });
+      assert.equal(response.status, 409);
+      assert.match((await response.json()).message, /กรุณาแก้ไขเวลา/);
+      assert.equal(api.current().status, "DRAFT");
+      assert.deepEqual(api.calls, ["find"]);
+      assert.equal(api.audits.length, 0);
+    }
+  }
+});
+
+test("an expired draft can be rescheduled and then published", async (context) => {
+  context.mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-01T05:00:00Z") });
+  for (const role of ["ADMIN", "ORGANIZER"]) {
+    const api = routes(principal(role));
+    assert.equal((await api.patch(schedule)).status, 200);
+    assert.equal(api.current().status, "DRAFT");
+    assert.equal((await api.patch({ status: "PUBLISHED" })).status, 200);
+    assert.equal(api.current().status, "PUBLISHED");
+  }
+});
+
+test("a running draft remains publishable until its exact end time", async (context) => {
+  context.mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-01T03:59:59.999Z") });
+  const api = routes();
+  assert.equal((await api.patch({ status: "PUBLISHED" })).status, 200);
+  assert.equal(api.current().status, "PUBLISHED");
+});
+
+test("publication rechecks expiry when the transaction begins", async (context) => {
+  const now = new Date("2026-11-01T03:59:59.999Z");
+  context.mock.timers.enable({ apis: ["Date"], now });
+  const api = routes(principal("ADMIN"), { beforeTransaction: () => context.mock.timers.setTime(now.getTime() + 1) });
+  assert.equal((await api.patch({ status: "PUBLISHED" })).status, 409);
+  assert.equal(api.current().status, "DRAFT");
+  assert.deepEqual(api.calls, ["find"]);
+});
+
+test("a concurrent schedule or status change prevents publication using stale timing", async (context) => {
+  context.mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-01T03:00:00Z") });
+  for (const concurrentChange of [
+    { endsAt: new Date("2026-11-01T02:30:00Z") }, { status: "CANCELLED" },
+  ]) {
+    const api = routes(principal("ADMIN"), { concurrentChange });
+    assert.equal((await api.patch({ status: "PUBLISHED" })).status, 409);
+    assert.notEqual(api.current().status, "PUBLISHED");
+    assert.ok(!api.calls.includes("update"));
+    assert.equal(api.audits.length, 0);
+  }
+});
 
 test("ADMIN and ORGANIZER can edit draft start/end times, with old and new dates in the audit trail", async () => {
   for (const role of ["ADMIN", "ORGANIZER"]) {

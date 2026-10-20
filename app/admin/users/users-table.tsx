@@ -13,6 +13,7 @@ import {
   GraduationCap,
   CalendarCheck,
   Trash2,
+  KeyRound,
 } from "lucide-react";
 import { ROLES } from "@/lib/permissions";
 import type { UserDto, UserListResult } from "@/types/user";
@@ -46,6 +47,7 @@ import {
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { CreateUserDialog } from "@/components/create-user-dialog";
 import { UserRoleSelector } from "@/components/user-role-selector";
+import { ResetUserPasswordDialog } from "@/components/reset-user-password-dialog";
 
 const ROLE_OPTIONS = [ROLES.ADMIN, ROLES.ORGANIZER, ROLES.STUDENT];
 const PAGE_SIZE = 10;
@@ -62,10 +64,12 @@ export function UsersTable({
   initialResult,
   currentUserId,
   canDeleteUsers,
+  canResetPasswords = false,
 }: {
   initialResult: UserListResult;
   currentUserId: string;
   canDeleteUsers: boolean;
+  canResetPasswords?: boolean;
 }) {
   const [result, setResult] = useState(initialResult);
   const [formQ, setFormQ] = useState("");
@@ -81,6 +85,7 @@ export function UsersTable({
   const [deleteTarget, setDeleteTarget] = useState<UserDto | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [passwordTarget, setPasswordTarget] = useState<UserDto | null>(null);
   const accountStatusLockReason = editing?.id === currentUserId
     ? "ไม่สามารถปิดใช้งานบัญชีที่กำลังล็อกอินอยู่ได้"
     : editing?.isActive && editing.roles.includes(ROLES.ADMIN) && result.activeAdminCount <= 1
@@ -413,6 +418,11 @@ export function UsersTable({
                       <Pencil className="mr-1 h-3.5 w-3.5" />
                       แก้ไข
                     </Button>
+                    {canResetPasswords && user.roles.length === 1 && (user.roles[0] === ROLES.STUDENT || user.roles[0] === ROLES.ORGANIZER) && (
+                      <Button variant="outline" size="sm" disabled={deleting || saving || loading} aria-label={`เปลี่ยนรหัสผ่าน ${user.username}`} onClick={() => setPasswordTarget(user)}>
+                        <KeyRound className="size-3.5" />รหัสผ่าน
+                      </Button>
+                    )}
                     {canDeleteUsers && (
                       <Button variant="destructive" size="sm" aria-label={`ลบผู้ใช้ ${user.username}`}
                         disabled={user.id === currentUserId || deleting || saving || loading}
@@ -462,6 +472,7 @@ export function UsersTable({
       )}
 
       {/* Modal แก้ไขผู้ใช้งาน */}
+      {passwordTarget && <ResetUserPasswordDialog key={passwordTarget.id} user={passwordTarget} onClose={() => setPasswordTarget(null)} />}
       <Dialog
         open={Boolean(editing && edit)}
         onOpenChange={(open) => {

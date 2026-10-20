@@ -15,6 +15,7 @@ const adminNav: DashboardNavItem[] = [
   { href: "/admin/profile", label: "โปรไฟล์", icon: "profile" },
   { href: "/admin/rewards", label: "จัดการของรางวัล", icon: "rewards" },
   { href: "/admin/redemptions", label: "คำขอแลกรางวัล", icon: "list" },
+  { href: "/admin/reports", label: "รายงานประจำปี", icon: "list" },
 ];
 
 export default function AdminLayout({

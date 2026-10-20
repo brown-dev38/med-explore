@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { notifyActivityUpdate } from "@/lib/activity-live";
 import { toast } from "sonner";
 import {
   Plus,
@@ -46,6 +46,8 @@ import {
 } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ActivityScheduleEditor } from "@/components/activity-schedule-editor";
+import { ActivityPublishButton } from "@/components/activity-publish-button";
+import { useLiveActivityData } from "@/components/use-live-activity-data";
 
 const STATUS_CONFIG: Record<
   ActivityStatus,
@@ -75,8 +77,7 @@ export function ActivitiesManager({
   detailBasePath?: string;
   canDeleteAll?: boolean;
 }) {
-  const router = useRouter();
-  const [items, setItems] = useState(initial);
+  const { data: items, setData: setItems, refresh } = useLiveActivityData("/api/activities", initial);
   const [form, setForm] = useState(emptyForm);
   const [createOpen, setCreateOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -91,14 +92,7 @@ export function ActivitiesManager({
   });
 
   async function reload() {
-    try {
-      const res = await fetch("/api/activities");
-      if (!res.ok) throw new Error("refresh failed");
-      const json = await res.json();
-      setItems(json.data);
-    } catch {
-      toast.warning("บันทึกแล้ว แต่โหลดรายการล่าสุดไม่สำเร็จ กรุณารีเฟรชหน้าจอ");
-    }
+    if (!await refresh()) toast.warning("บันทึกแล้ว กำลังรอเชื่อมต่อเพื่ออัปเดตรายการล่าสุด");
   }
 
   async function request(
@@ -119,7 +113,7 @@ export function ActivitiesManager({
         return false;
       }
       await reload();
-      router.refresh();
+      notifyActivityUpdate();
       return true;
     } catch {
       toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
@@ -335,14 +329,11 @@ export function ActivitiesManager({
                                 .sort((a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt)))}
                               onConflict={() => { void reload(); }}
                             />
-                            <Button
-                              variant="default"
-                              size="sm"
-                              onClick={() => promptPublish(act)}
+                            <ActivityPublishButton
+                              endsAt={act.endsAt}
+                              onPublish={() => promptPublish(act)}
                               disabled={busy}
-                            >
-                              เปิดรับลงทะเบียน
-                            </Button>
+                            />
                           </>
                         )}
 

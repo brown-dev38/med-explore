@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRef, useState } from "react";
 import { LogOut } from "lucide-react";
 import { toast } from "sonner";
 import { signOutClient } from "@/lib/auth-client";
@@ -10,21 +9,28 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export function LogoutButton({ className = "", iconOnly = false }: { className?: string; iconOnly?: boolean }) {
-  const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const inFlight = useRef(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const handleLogout = async () => {
+    if (inFlight.current) return false;
+    inFlight.current = true;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 8000);
+    setIsLoading(true);
     try {
-      setIsLoading(true);
-      await signOutClient("/");
-      router.push("/");
-      router.refresh();
+      await signOutClient("/", controller.signal);
+      // Discard cached authenticated layouts and their preserved loading state.
+      window.location.replace("/");
       return true;
     } catch {
       toast.error("ออกจากระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
-      setIsLoading(false);
       return false;
+    } finally {
+      window.clearTimeout(timeout);
+      inFlight.current = false;
+      setIsLoading(false);
     }
   };
 

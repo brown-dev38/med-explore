@@ -27,6 +27,10 @@ function authCallbacks(active) {
     "@/lib/account-status": { getAccountStatus: async () => active === true ? "ACTIVE" : active === false ? "SUSPENDED" : "DELETED" },
     "next-auth": { getServerSession: async () => null },
     "next-auth/providers/credentials": (options) => options,
+    "@/lib/microsoft-config": { getMicrosoftConfig: () => null, MICROSOFT_PROVIDER_ID: "azure-ad" },
+    "@/lib/microsoft-accounts": {},
+    "@/lib/auth-user": {},
+    "@/lib/permissions": {},
   }).authOptions.callbacks;
 }
 
@@ -62,6 +66,7 @@ test("stale session cookies cannot trap deleted users in login redirects", async
     "next-auth/jwt": { getToken: async () => ({ uid: "2", roles: ["STUDENT"] }) },
     "@/lib/permissions": permissions,
     "@/lib/account-status": { isActiveAccount: async () => false },
+    "@/lib/microsoft-accounts": {},
   });
   for (const pathname of ["/login", "/register", "/"]) {
     const response = await proxy({

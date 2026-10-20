@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { PERMISSIONS, ROLES, dashboardPathFor } from "@/lib/permissions";
 import { isActiveAccount } from "@/lib/account-status";
+import { microsoftSessionIsLinked } from "@/lib/microsoft-accounts";
 
 const AUTH_PAGES = ["/login", "/register"];
 
@@ -32,7 +33,7 @@ export async function proxy(request: NextRequest) {
   const principal = { roles, permissions };
 
   if (AUTH_PAGES.includes(pathname) || pathname === "/") {
-    if (!(await isActiveAccount(token.uid))) {
+    if (!(await isActiveAccount(token.uid)) || (token.microsoftAccountId && (!token.uid || !await microsoftSessionIsLinked(token.microsoftAccountId, token.uid)))) {
       // Clear every session cookie chunk so a deleted account can reach login.
       const response = NextResponse.next();
       for (const cookie of request.cookies.getAll()) {

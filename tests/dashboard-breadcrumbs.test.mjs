@@ -55,6 +55,10 @@ test("year-activity views absent from the sidebar still have a readable breadcru
   ]);
 });
 
+test("annual reports have a readable breadcrumb in both staff areas", () => {
+  for (const area of ["admin", "organizer"]) assert.equal(dashboardBreadcrumbs(`/${area}/reports`, navigation(area)).at(-1).label, "รายงานประจำปี");
+});
+
 test("staff viewing another student's activities do not see a 'my activities' label", () => {
   const crumbs = dashboardBreadcrumbs("/admin/students/42/dashboard/my-activities", navigation("admin"));
   assert.equal(crumbs.at(-1).label, "กิจกรรมของนิสิต");

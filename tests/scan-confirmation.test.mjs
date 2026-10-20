@@ -6,6 +6,7 @@ function scanner() {
   const values = [];
   const checkoutRequest = { current: null };
   const navigations = [];
+  let updates = 0;
   let cursor = 0;
   let lastToken;
   let pendingEffect;
@@ -27,6 +28,7 @@ function scanner() {
     "next/link": "a", "lucide-react": {},
     "next/navigation": { useRouter: () => ({ replace: (url) => navigations.push(url) }), useSearchParams: () => new URLSearchParams({ token }) },
     "@/components/qr-scanner": { QrScanner: "scanner" },
+    "@/lib/activity-live": { notifyActivityUpdate: () => { updates++; } },
   };
   for (const [file, names] of [
     ["button", ["Button"]], ["input", ["Input"]], ["label", ["Label"]],
@@ -55,7 +57,7 @@ function scanner() {
   }
   const settle = async () => { await new Promise(setImmediate); return render(); };
   return {
-    render, settle, text, navigations,
+    render, settle, text, navigations, updates: () => updates,
     confirm: () => render().find((node) => node.type === "Button" && text(node) === "ยืนยัน Check-out"),
     changeToken: (next) => { token = next; return render(); },
     unmount: () => cleanup?.(),
@@ -86,6 +88,7 @@ test("opening a checkout QR displays a confirmation button and records only once
   assert.equal(new URL(requests[0].url, "https://example.test").searchParams.get("academicYearId"), "2");
   assert.equal(ui.confirm(), undefined);
   finish(checkedOut()); await saved;
+  assert.equal(ui.updates(), 1);
   assert.ok(ui.render().some((node) => node.type === "AlertDescription" && ui.text(node).includes("บันทึกเช็คเอาท์สำเร็จ")));
   ui.unmount();
 });
@@ -95,6 +98,7 @@ test("an invalid QR has no confirmation button and never posts attendance", asyn
   const ui = scanner(); ui.render(); await ui.settle();
   assert.equal(request.mock.callCount(), 1);
   assert.equal(ui.confirm(), undefined);
+  assert.equal(ui.updates(), 0);
   assert.ok(ui.render().some((node) => node.type === "AlertDescription" && ui.text(node) === "QR หมดอายุแล้ว"));
   ui.unmount();
 });
@@ -138,6 +142,27 @@ test("changing QR tokens aborts an outstanding checkout and ignores its stale re
   assert.equal(signal.aborted, true);
   finish(checkedOut()); await saving;
   assert.ok(ui.confirm());
+  assert.equal(ui.updates(), 0);
+  ui.unmount();
+});
+
+test("successful check-in notifies activity views, including registration before check-in", async (context) => {
+  let registered = false;
+  context.mock.method(globalThis, "fetch", async (url, options = {}) => {
+    if (url.includes("participations")) {
+      registered = true;
+      return Response.json({ success: true }, { status: 201 });
+    }
+    if (options.method !== "POST") return preview("CHECK_IN");
+    if (!registered) return Response.json({ code: "NOT_REGISTERED", activity: { id: "4", status: "PUBLISHED" } }, { status: 400 });
+    return Response.json({ data: { eventType: "CHECK_IN" } }, { status: 201 });
+  });
+  const ui = scanner(); ui.render(); await ui.settle();
+  assert.equal(ui.updates(), 0);
+  const checkIn = ui.render().find((node) => node.type === "Button" && ui.text(node) === "Check-in เข้างาน");
+  await checkIn.props.onClick();
+  assert.equal(ui.updates(), 2);
+  assert.ok(ui.render().some((node) => node.type === "AlertDescription" && ui.text(node).includes("บันทึกเช็คอินสำเร็จ")));
   ui.unmount();
 });
 

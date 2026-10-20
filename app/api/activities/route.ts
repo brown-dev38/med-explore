@@ -36,7 +36,7 @@ export async function GET(req: Request) {
 
   const activities = await prisma.activity.findMany({
     where,
-    orderBy: { startsAt: "desc" },
+    orderBy: { startsAt: canManage ? "desc" : "asc" },
     include: { _count: { select: { participations: true } } },
   });
 
@@ -45,7 +45,7 @@ export async function GET(req: Request) {
       userId: BigInt(user.id),
       activityId: { in: activities.map((activity) => activity.id) },
     },
-    select: { id: true, activityId: true, status: true },
+    select: { id: true, activityId: true, status: true, attendanceRecords: { select: { eventType: true, occurredAt: true } } },
   });
   const participationByActivity = new Map(
     myParticipations.map((p) => [String(p.activityId), p]),
@@ -57,12 +57,18 @@ export async function GET(req: Request) {
       ...toActivityDto(activity),
       participantCount: activity._count.participations,
       myParticipation: mine
-        ? { id: String(mine.id), status: mine.status }
+        ? {
+            id: String(mine.id), status: mine.status,
+            checkInAt: mine.attendanceRecords.find((record) => record.eventType === "CHECK_IN")?.occurredAt.toISOString() ?? null,
+            checkOutAt: mine.attendanceRecords.find((record) => record.eventType === "CHECK_OUT")?.occurredAt.toISOString() ?? null,
+          }
         : null,
     };
   });
 
-  return successResponse(data);
+  const response = successResponse(data);
+  response.headers.set("Cache-Control", "private, no-store");
+  return response;
 }
 
 export async function POST(req: Request) {

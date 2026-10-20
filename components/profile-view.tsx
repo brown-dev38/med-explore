@@ -11,6 +11,8 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/dal";
 import { getStudentDashboardContext, type StudentTarget } from "@/lib/student-dashboard";
 import { toUserDto } from "@/lib/users";
+import { MicrosoftAccountSettings } from "@/components/microsoft-account-settings";
+import { ChangePasswordForm } from "@/components/change-password-form";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -132,6 +134,10 @@ export async function ProfileView({ target, studentDashboard = false }: { target
           </dl>
         </CardContent>
       </Card>
+      {!target && <>
+        <ChangePasswordForm hasPassword={Boolean(user.passwordHash)} />
+        <MicrosoftAccountSettings />
+      </>}
     </div>
   );
 }

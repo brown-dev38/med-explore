@@ -13,6 +13,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { QrScanner } from "@/components/qr-scanner";
+import { notifyActivityUpdate } from "@/lib/activity-live";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -123,6 +124,7 @@ export function ScanClient({ academicYearId, academicYearCode }: { academicYearI
       const json = await res.json().catch(() => ({}));
       if (!active) return;
       setState(scanStateFrom(res, json));
+      if (res.ok || res.status === 409) notifyActivityUpdate();
     })().catch(() => {
       if (active) {
         setState({
@@ -166,7 +168,10 @@ export function ScanClient({ academicYearId, academicYearCode }: { academicYearI
         body: JSON.stringify({ token, academicYearId }), signal: controller.signal,
       });
       const json = await res.json().catch(() => ({}));
-      if (!controller.signal.aborted) setState(scanStateFrom(res, json, "CHECK_OUT"));
+      if (!controller.signal.aborted) {
+        setState(scanStateFrom(res, json, "CHECK_OUT"));
+        if (res.ok || res.status === 409) notifyActivityUpdate();
+      }
     } catch {
       if (!controller.signal.aborted) setState({ status: "error", message: "ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ กรุณาสแกนอีกครั้ง" });
     } finally {
@@ -192,6 +197,7 @@ export function ScanClient({ academicYearId, academicYearCode }: { academicYearI
         });
         return;
       }
+      notifyActivityUpdate();
 
       const res = await fetch("/api/attendance/scan", {
         method: "POST",
@@ -200,6 +206,7 @@ export function ScanClient({ academicYearId, academicYearCode }: { academicYearI
       });
       const json = await res.json().catch(() => ({}));
       setState(scanStateFrom(res, json));
+      if (res.ok || res.status === 409) notifyActivityUpdate();
     } catch {
       setState({
         status: "error",

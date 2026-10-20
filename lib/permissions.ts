@@ -57,6 +57,15 @@ export function canManageRewards(principal: Principal): boolean {
   return hasRole(principal, ROLES.ADMIN) || hasRole(principal, ROLES.ORGANIZER);
 }
 
+export function canExportAnnualReports(principal: Principal): boolean {
+  return hasRole(principal, ROLES.ADMIN) || (
+    hasRole(principal, ROLES.ORGANIZER) &&
+    hasPermission(principal, PERMISSIONS.ACTIVITY_MANAGE) &&
+    hasPermission(principal, PERMISSIONS.STAR_APPROVE) &&
+    hasPermission(principal, PERMISSIONS.REWARD_MANAGE)
+  );
+}
+
 export function dashboardPathFor(principal: Principal): string {
   if (hasRole(principal, ROLES.ADMIN)) return "/admin";
   if (hasRole(principal, ROLES.ORGANIZER)) return "/organizer";
