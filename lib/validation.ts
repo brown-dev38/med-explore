@@ -59,6 +59,8 @@ export const studentRegisterSchema = userCreateSchema.pick({
   firstname: true,
   lastname: true,
 }).extend({
+  firstname: z.string({ error: "กรุณาระบุชื่อจริง" }).trim().min(1, "กรุณาระบุชื่อจริง").max(191),
+  lastname: z.string({ error: "กรุณาระบุนามสกุล" }).trim().min(1, "กรุณาระบุนามสกุล").max(191),
   studentCode: z.string({ error: "กรุณาระบุรหัสนิสิต" }).trim()
     .min(1, "กรุณาระบุรหัสนิสิต").max(50, "รหัสนิสิตต้องไม่เกิน 50 ตัวอักษร"),
 });

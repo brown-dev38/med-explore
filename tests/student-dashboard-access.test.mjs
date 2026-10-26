@@ -75,7 +75,6 @@ test("proxy blocks every direct student dashboard path for staff and leaves stud
       "next-auth/jwt": { getToken: async () => role ? { uid: "7", roles: [role], permissions: [] } : null },
       "@/lib/permissions": permissions,
       "@/lib/account-status": { isActiveAccount: async () => true },
-      "@/lib/microsoft-accounts": {},
     });
     for (const path of ["/dashboard", "/dashboard/profile", "/dashboard/my-activities", "/dashboard/year-activities"]) {
       const result = await proxy({ nextUrl: { pathname: path }, url: `https://example.test${path}` });
@@ -91,7 +90,6 @@ test("organizers need no extra management permission to enter the student viewin
     "next-auth/jwt": { getToken: async () => ({ uid: "7", roles: ["ORGANIZER"], permissions: [] }) },
     "@/lib/permissions": permissions,
     "@/lib/account-status": { isActiveAccount: async () => true },
-    "@/lib/microsoft-accounts": {},
   });
   const path = "/organizer/students/42/dashboard";
   assert.equal((await proxy({ nextUrl: { pathname: path }, url: `https://example.test${path}` })).next, true);

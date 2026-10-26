@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
-import type { authUserRelations } from "@/lib/microsoft-accounts";
+
+export const authUserRelations = { userRoles: { include: { role: { include: { permissions: { include: { permission: true } } } } } } } as const;
 
 export function toAuthUser(user: Prisma.UserGetPayload<{ include: typeof authUserRelations }>) {
   const roles = user.userRoles.map((assignment) => assignment.role.name);

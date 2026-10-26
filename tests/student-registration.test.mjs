@@ -4,7 +4,7 @@ import bcrypt from "bcrypt";
 import { loadTypeScript } from "./load-typescript.mjs";
 
 const validation = loadTypeScript("../lib/validation.ts");
-const input = { username: "new-student", email: "NEW@example.test", password: "Test@1234", studentCode: " 69001234 " };
+const input = { username: "new-student", email: "NEW@example.test", password: "Test@1234", studentCode: " 69001234 ", firstname: " สมชาย ", lastname: " ใจดี " };
 
 function route({ duplicateField, missingRole = false, createError } = {}) {
   const state = { users: [], transactions: 0, roleQueries: [] };
@@ -45,6 +45,21 @@ test("public registration requires a nonblank student code of at most 50 charact
   }
 });
 
+test("public registration requires nonblank first and last names of at most 191 characters", async () => {
+  for (const field of ["firstname", "lastname"]) {
+    for (const value of [undefined, null, "", "  ", 123, {}, "ก".repeat(192)]) {
+      const api = route();
+      const response = await api.post({ ...input, [field]: value });
+      assert.equal(response.status, 400);
+      if (value === undefined || value === null || value === "" || value === "  ") {
+        assert.equal((await response.json()).message, field === "firstname" ? "กรุณาระบุชื่อจริง" : "กรุณาระบุนามสกุล");
+      }
+      assert.equal(api.state.transactions, 0);
+      assert.equal(api.state.users.length, 0);
+    }
+  }
+});
+
 test("malformed registration bodies are rejected without writes", async () => {
   for (const body of ["{", "null", "[]"]) {
     const api = route();
@@ -61,6 +76,8 @@ test("public registration always assigns only STUDENT and hashes passwords", asy
   assert.deepEqual(api.state.roleQueries, [{ name: "STUDENT" }]);
   const created = api.state.users[0];
   assert.equal(created.studentCode, "69001234");
+  assert.equal(created.firstname, "สมชาย");
+  assert.equal(created.lastname, "ใจดี");
   assert.equal(created.email, "new@example.test");
   assert.equal(created.isActive, true);
   assert.deepEqual(created.userRoles, { create: [{ roleId: 4n }] });

@@ -13,19 +13,13 @@
 | Method | Path | คำอธิบาย |
 | --- | --- | --- |
 | GET/POST | `/api/auth/[...nextauth]` | handler ของ NextAuth (session, csrf, callback, signout) |
-| GET | `/api/auth/microsoft-link` | อ่านสถานะเปิดใช้งาน Microsoft และบัญชีที่ผูกของผู้ใช้ปัจจุบัน (ต้องล็อกอิน, `private, no-store`) |
-| POST | `/api/auth/microsoft-link` | `{ password }` ยืนยันรหัสผ่านและเตรียมคำขอผูก 10 นาที; `{ action: "login" }` ล้างคำขอผูกค้างก่อนล็อกอิน Microsoft (ไม่ต้องล็อกอิน) |
-| DELETE | `/api/auth/microsoft-link` | `{ password }` ยืนยันรหัสผ่านและยกเลิกการผูกของผู้ใช้ปัจจุบัน |
 
-Microsoft ใช้ provider `azure-ad`; callback `/api/auth/callback/azure-ad` ต้องลงทะเบียนเป็น Web redirect URI ใน Entra การ POST/DELETE ไป `microsoft-link` ต้องมาจาก origin เดียวกับ URL หลักของระบบ และต้องเปิด Microsoft ก่อน (`503` หากยังไม่ตั้งค่า) ไม่รับ user ID จาก client ดู [คู่มือตั้งค่า](microsoft-login.md)
-
-GET สถานะส่ง `{ enabled, account: { label, linkedAt } | null }` ใน `data`; POST เตรียมผูกส่ง `{ callbackUrl }` พร้อม HttpOnly cookie ไม่ส่งโทเคนผูกใน JSON คำขอผูกใช้ครั้งเดียวและผูกกับ session ผู้ใช้ที่ยืนยันรหัสผ่าน บัญชี Microsoft ที่ยังไม่ผูกเข้าสู่ระบบไม่ได้ แม้อีเมลตรงกับบัญชีเดิม และไม่สร้างบัญชีใหม่อัตโนมัติ
+เข้าสู่ระบบด้วยชื่อผู้ใช้ รหัสนิสิต หรืออีเมล และรหัสผ่านของระบบ ผ่าน provider `credentials` เท่านั้น
 
 ฝั่ง client ใช้ `lib/auth-client.ts`:
 - `signInWithCredentials(username, password, callbackUrl)` — POST `/api/auth/callback/credentials` (relative) แล้วเช็ค `/api/auth/session`
 - `signOutClient(callbackUrl, signal?)` — ขอ CSRF แบบ `no-store`, POST `/api/auth/signout` และตรวจ `/api/auth/session` แบบ `no-store` ว่าไม่มี user ID ก่อนถือว่าออกจากระบบสำเร็จ; ทั้งสามคำขอใช้ AbortSignal เดียวกัน
 - `fetchSession()` — GET `/api/auth/session`
-- `getMicrosoftSignInUrl(callbackUrl, linking?)` — เตรียม login แล้ว POST `/api/auth/signin/azure-ad` พร้อม CSRF เพื่อรับ URL สำหรับเปลี่ยนหน้าไป Microsoft; `linking=true` ใช้หลังเตรียมคำขอผูกสำเร็จเท่านั้น
 
 `GET /api/auth/session` ส่ง `accountStatus` เป็น `ACTIVE`, `SUSPENDED`, `DELETED` หรือ `UNAUTHENTICATED`; เมื่อถูกระงับ/ลบบัญชีจะล้าง `user.id`, บทบาท และสิทธิ์ พร้อมคงเหตุผลเพื่อแสดงข้อความก่อนออกจากระบบ หน้าใช้งานตรวจแบบ `no-store` ทุก 5 วินาทีและเมื่อกลับแท็บ โดยไม่ออกจากระบบเพียงเพราะเครือข่าย/API ขัดข้อง
 
@@ -97,8 +91,8 @@ endpoint จัดการผู้ใช้ต้องมีสิทธิ�
 
 - `roles` ต้องมีชื่อบทบาทที่รองรับเพียง 1 รายการ เช่น `["STUDENT"]`, `["ORGANIZER"]` หรือ `["ADMIN"]`; รายการว่าง หลายรายการ หรือบทบาทอื่นตอบ `400`; PATCH ที่ไม่ส่ง `roles` จะคงบทบาทเดิม
 - `POST` สร้างผู้ใช้พร้อมบทบาท (ค่าเริ่มต้น `STUDENT`) และ Audit Log ใน transaction เดียว; รหัสผ่านอย่างน้อย 6 ตัวอักษร, เก็บ bcrypt hash, คืน DTO โดยไม่คืนรหัสผ่าน/hash, ชื่อผู้ใช้/อีเมล/รหัสนิสิตซ้ำตอบ 409
-- `PATCH /api/users/[id]/password`: ต้องเป็นคำขอจาก origin เดียวกับเว็บไซต์ ตรวจ ADMIN ที่เปิดใช้งานและบทบาทเป้าหมายจากฐานข้อมูลใน transaction แบบ Serializable; ไม่รับเป้าหมาย ADMIN/หลายบทบาท (`403`) รหัสผ่านอย่างน้อย 6 ตัวอักษร ไม่เกิน 72 ไบต์ UTF-8 และต้องตรงกับ `confirmPassword` (`400`) บันทึก bcrypt hash และ Audit Log `user.password.reset` โดยไม่มีรหัสผ่าน/hash คืนเฉพาะ `{ id }` และยกเลิกคำขอผูก Microsoft ที่ยังค้างของผู้ใช้ หากขั้นตอนใดล้มเหลวจะ rollback ทั้งชุด ไม่มี API เปิดดูรหัสผ่านเดิม และไม่เปลี่ยนรหัสผ่านหรือยกเลิกการผูก Microsoft ที่สำเร็จแล้ว
-- `PATCH /api/users/me/password`: ต้องเข้าสู่ระบบและมาจาก origin เดียวกับเว็บไซต์ ใช้ user ID จาก session เท่านั้น ไม่รับฟิลด์อื่นนอกจากสามฟิลด์รหัสผ่าน; รหัสผ่านปัจจุบันผิด → `403`, รหัสผ่านใหม่/ยืนยันไม่ตรงกันหรือใช้รหัสเดิม → `400`, บัญชีถูกปิด/ลบ → `401`, บัญชียังไม่มีรหัสผ่าน → `400`, แก้ไขพร้อมกัน → `409` รหัสผ่านใหม่อย่างน้อย 6 ตัวอักษร ไม่เกิน 72 ไบต์ UTF-8 บันทึก hash และ `user.password.change` พร้อมล้างคำขอผูก Microsoft ที่ค้างใน transaction เดียว ผลสำเร็จ `{ changed: true }` ใน `data` พร้อม `private, no-store` ไม่ส่งรหัสผ่าน/hash กลับและไม่เปลี่ยน role, สถานะบัญชี หรือ Microsoft mapping
+- `PATCH /api/users/[id]/password`: ต้องเป็นคำขอจาก origin เดียวกับเว็บไซต์ ตรวจ ADMIN ที่เปิดใช้งานและบทบาทเป้าหมายจากฐานข้อมูลใน transaction แบบ Serializable; ไม่รับเป้าหมาย ADMIN/หลายบทบาท (`403`) รหัสผ่านอย่างน้อย 6 ตัวอักษร ไม่เกิน 72 ไบต์ UTF-8 และต้องตรงกับ `confirmPassword` (`400`) บันทึก bcrypt hash และ Audit Log `user.password.reset` โดยไม่มีรหัสผ่าน/hash คืนเฉพาะ `{ id }` หากขั้นตอนใดล้มเหลวจะ rollback ทั้งชุด ไม่มี API เปิดดูรหัสผ่านเดิม
+- `PATCH /api/users/me/password`: ต้องเข้าสู่ระบบและมาจาก origin เดียวกับเว็บไซต์ ใช้ user ID จาก session เท่านั้น ไม่รับฟิลด์อื่นนอกจากสามฟิลด์รหัสผ่าน; รหัสผ่านปัจจุบันผิด → `403`, รหัสผ่านใหม่/ยืนยันไม่ตรงกันหรือใช้รหัสเดิม → `400`, บัญชีถูกปิด/ลบ → `401`, บัญชียังไม่มีรหัสผ่าน → `400`, แก้ไขพร้อมกัน → `409` รหัสผ่านใหม่อย่างน้อย 6 ตัวอักษร ไม่เกิน 72 ไบต์ UTF-8 บันทึก hash และ `user.password.change` ใน transaction เดียว ผลสำเร็จ `{ changed: true }` ใน `data` พร้อม `private, no-store` ไม่ส่งรหัสผ่าน/hash กลับและไม่เปลี่ยน role หรือสถานะบัญชี
 - การลบกิจกรรม/ปีการศึกษาทำงานพร้อมการลบข้อมูลที่ผูกอยู่และบันทึก Audit Log ใน transaction เดียว; หากขั้นตอนใดล้มเหลว rollback ทั้งชุด และไม่ลบบัญชีผู้ใช้
 - ห้ามถอดบทบาท `ADMIN` ออกจากแอดมินคนสุดท้าย (409)
 - PATCH: ห้ามปิดใช้งานบัญชีตัวเอง และห้ามปิด/เปลี่ยนบทบาท ADMIN จนไม่เหลือ ADMIN ที่เปิดใช้งาน (`409`); ตรวจจากข้อมูลปัจจุบันใน transaction รวมกรณีส่งเฉพาะ `isActive: false` และไม่นับ ADMIN ที่ปิดใช้งานแล้ว
@@ -108,6 +102,21 @@ endpoint จัดการผู้ใช้ต้องมีสิทธิ�
 - DELETE ทำใน transaction เดียวกับการลบบทบาทและสร้าง `user.delete` Audit Log; เมื่อขั้นตอนใดล้มเหลว rollback ทั้งชุด; ไม่พบบัญชี → `404`
 - บัญชีที่ถูกลบหรือปิดใช้งานจะไม่สามารถใช้ JWT session เดิมเข้าถึงข้อมูล/API ได้
 - คำค้น `q` ค้นจาก username / email / studentCode / ชื่อ / นามสกุล
+
+## นำเข้า Excel สำหรับดาวสีเขียว / นิสิตช่วยงาน
+
+เฉพาะ ADMIN และ ORGANIZER; โหมดช่วยงานกิจกรรมต้องมี `activity.manage` และทุกคำขอต้องมาจาก origin เดียวกับเว็บไซต์
+
+| Method | Path | ข้อมูล |
+| --- | --- | --- |
+| POST | `/api/green-stars/import` | multipart: `file`, `mode` (`work` / `activity`), `academicYearId`, `activityId` (เฉพาะ `activity`) |
+| PUT | `/api/green-stars/import` | JSON: `{ target: { mode, academicYearId, activityId? }, studentCodes: string[], description, requestId }` |
+
+- POST ตรวจสอบไฟล์ `.xlsx` ขนาดไม่เกิน 5 MB อ่านเฉพาะคอลัมน์ A ของชีตแรก สูงสุด 500 แถวข้อมูล ข้ามแถวว่างและหัวคอลัมน์มาตรฐาน เช่น `รหัสนักศึกษา`, `รหัสนิสิต`, `Student ID`; รักษาเลขศูนย์นำหน้าของข้อความและรูปแบบตัวเลข `000...` ไม่รับเซลล์สูตรเป็นรหัส
+- ผลตรวจสอบ `{ rows: [{ row, studentCode, name?, status, message }] }` ใน `data` มีสถานะ `ready`, `invalid`, `duplicate`, `not-found`, `assigned` และไม่มีการบันทึกข้อมูล
+- PUT ใช้เฉพาะรหัสที่ผ่านการตรวจสอบ ตรวจสิทธิ์ นิสิตที่เปิดใช้งาน ปีการศึกษาที่ไม่ปิด และกิจกรรมซ้ำบนเซิร์ฟเวอร์ก่อนบันทึกทั้งชุดใน transaction เดียว; โหมด `work` ต้องมีรายละเอียดงานและให้คนละ 1 ดาวสีเขียว ส่วน `activity` เพิ่มเฉพาะรายชื่อที่ยังไม่เคยมอบหมายเป็น `ASSIGNED` โดยยังไม่ให้ดาว
+- บันทึก Audit Log `star.import_green_work` หรือ `helper.import_excel` พร้อมใบรับคำขอใน transaction เดียว; `requestId` เป็น UUID และการส่งคำขอเดิมซ้ำไม่เพิ่มรายชื่อหรือดาวอีก ผลลัพธ์ `{ imported, replayed }` ใน `data` (`201` ครั้งแรก / `200` เมื่อส่งซ้ำ)
+- หากข้อมูลนิสิตหรือสิทธิ์เปลี่ยนก่อนยืนยัน จะปฏิเสธทั้งชุด; ปีปิดหรือคำขอซ้ำที่เปลี่ยนข้อมูลตอบ `409` การอัปโหลดไฟล์ใหม่เพื่อให้ดาวงานใหม่ถือเป็นคำขอใหม่
 
 ## QR Session
 

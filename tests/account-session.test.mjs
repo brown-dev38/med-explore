@@ -27,8 +27,6 @@ function authCallbacks(active) {
     "@/lib/account-status": { getAccountStatus: async () => active === true ? "ACTIVE" : active === false ? "SUSPENDED" : "DELETED" },
     "next-auth": { getServerSession: async () => null },
     "next-auth/providers/credentials": (options) => options,
-    "@/lib/microsoft-config": { getMicrosoftConfig: () => null, MICROSOFT_PROVIDER_ID: "azure-ad" },
-    "@/lib/microsoft-accounts": {},
     "@/lib/auth-user": {},
     "@/lib/permissions": {},
   }).authOptions.callbacks;
@@ -52,6 +50,49 @@ test("active accounts keep their session", async () => {
   assert.deepEqual(await authCallbacks(true).jwt({ token: { ...token } }), token);
 });
 
+test("sessions issued by the removed Microsoft provider lose all access", async () => {
+  const callbacks = authCallbacks(true);
+  for (const microsoftAccountId of ["9", ""]) {
+    let token = { uid: "2", role: "ADMIN", roles: ["ADMIN"], permissions: ["user.manage"], accountStatus: "ACTIVE", microsoftAccountId };
+    for (let refresh = 0; refresh < 2; refresh++) {
+      token = await callbacks.jwt({ token });
+      const session = await callbacks.session({ session: { user: {} }, token });
+      assert.equal(session.accountStatus, "UNAUTHENTICATED");
+      assert.equal(session.user.id, "");
+      assert.equal(session.user.role, null);
+      assert.deepEqual(session.user.roles, []);
+      assert.deepEqual(session.user.permissions, []);
+    }
+  }
+});
+
+test("signing in with a password replaces the retired provider session", async () => {
+  const callbacks = authCallbacks(true);
+  const user = { id: "2", role: "STUDENT", roles: ["STUDENT"], permissions: [], name: "Student", email: "student@example.test" };
+  const token = await callbacks.jwt({ token: { microsoftAccountId: "9" }, user });
+  assert.equal("microsoftAccountId" in token, false);
+  assert.equal(token.accountStatus, "ACTIVE");
+  assert.equal(token.uid, user.id);
+  assert.deepEqual(token.roles, user.roles);
+});
+
+test("proxy rejects retired provider sessions on every protected area and clears their cookie chunks", async () => {
+  const { proxy } = loadTypeScript("../proxy.ts", {
+    "next-auth/jwt": { getToken: async () => ({ uid: "2", roles: ["ADMIN"], microsoftAccountId: "9" }) },
+    "@/lib/permissions": loadTypeScript("../lib/permissions.ts"),
+    "@/lib/account-status": { isActiveAccount: async () => { throw new Error("retired sessions must be rejected before database access"); } },
+  });
+  for (const pathname of ["/login", "/register", "/", "/dashboard", "/dashboard/profile", "/organizer", "/admin/users"]) {
+    const response = await proxy({
+      nextUrl: { pathname }, url: `http://localhost${pathname}`,
+      cookies: { getAll: () => ["next-auth.session-token.0", "next-auth.session-token.1", "__Secure-next-auth.session-token", "next-auth.csrf-token"].map((name) => ({ name })) },
+    });
+    assert.equal(response.headers.get("location"), ["/login", "/register", "/"].includes(pathname) ? null : "http://localhost/login");
+    assert.equal(response.cookies.getAll().length, 3);
+    assert.ok(response.cookies.getAll().every((cookie) => cookie.expires.getTime() === 0));
+  }
+});
+
 test("deleted accounts retain a distinct reason after permissions are removed", async () => {
   const callbacks = authCallbacks(null);
   const token = await callbacks.jwt({ token: { uid: "2", roles: ["STUDENT"] } });
@@ -66,7 +107,6 @@ test("stale session cookies cannot trap deleted users in login redirects", async
     "next-auth/jwt": { getToken: async () => ({ uid: "2", roles: ["STUDENT"] }) },
     "@/lib/permissions": permissions,
     "@/lib/account-status": { isActiveAccount: async () => false },
-    "@/lib/microsoft-accounts": {},
   });
   for (const pathname of ["/login", "/register", "/"]) {
     const response = await proxy({

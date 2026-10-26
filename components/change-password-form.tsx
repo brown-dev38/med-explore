@@ -43,7 +43,7 @@ export function ChangePasswordForm({ hasPassword = true }: { hasPassword?: boole
   return <Card>
     <CardHeader>
       <CardTitle className="flex items-center gap-2"><KeyRound className="size-4" />เปลี่ยนรหัสผ่านของฉัน</CardTitle>
-      <CardDescription>ใช้รหัสผ่านปัจจุบันเพื่อเปลี่ยนรหัสผ่าน MedExplore Star การเปลี่ยนนี้ไม่มีผลต่อรหัสผ่าน Microsoft</CardDescription>
+      <CardDescription>ใช้รหัสผ่านปัจจุบันเพื่อเปลี่ยนรหัสผ่าน MedExplore Star</CardDescription>
     </CardHeader>
     <CardContent>
       {!hasPassword ? <p className="text-sm text-muted-foreground">บัญชีนี้ยังไม่มีรหัสผ่านของระบบ กรุณาติดต่อผู้ดูแลระบบ</p> : <form onSubmit={submit} className="max-w-2xl space-y-4" aria-busy={saving}>

@@ -9,7 +9,7 @@ const oldHash = await bcrypt.hash("old-password", 10);
 const valid = { currentPassword: "old-password", password: "new-password", confirmPassword: "new-password" };
 
 function route({ actor = { id: "7", roles: ["STUDENT"], permissions: [] }, active = true, missing = false, passwordHash = oldHash, auditFails = false, conflict = false } = {}) {
-  const state = { passwordHash, writes: 0, hashes: 0, queries: 0, intents: 1, audits: [] };
+  const state = { passwordHash, writes: 0, hashes: 0, queries: 0, audits: [] };
   const tx = {
     user: {
       findUnique: async ({ where }) => { state.queries++; assert.deepEqual(where, { id: 7n }); return missing ? null : { isActive: active, passwordHash: state.passwordHash }; },
@@ -19,7 +19,6 @@ function route({ actor = { id: "7", roles: ["STUDENT"], permissions: [] }, activ
         state.passwordHash = data.passwordHash; state.writes++;
       },
     },
-    microsoftLinkIntent: { deleteMany: async ({ where }) => { assert.deepEqual(where, { userId: 7n }); state.intents = 0; } },
     auditLog: { create: async ({ data }) => { if (auditFails) throw new Error("Audit unavailable"); state.audits.push(data); } },
   };
   const { PATCH } = loadTypeScript("../app/api/users/me/password/route.ts", {
@@ -49,7 +48,6 @@ test("every role can change only their own password without user.manage permissi
     assert.equal(await bcrypt.compare("new-password", api.state.passwordHash), true);
     assert.equal(await bcrypt.compare("old-password", api.state.passwordHash), false);
     assert.equal(api.state.writes, 1);
-    assert.equal(api.state.intents, 0);
     assert.deepEqual(api.state.audits, [{ actorId: 7n, action: "user.password.change", entityType: "User", entityId: 7n }]);
   }
 });
@@ -80,7 +78,6 @@ test("wrong current password, disabled or deleted users, and accounts without a 
     assert.equal(api.state.passwordHash, before);
     assert.equal(api.state.hashes, 0);
     assert.equal(api.state.writes, 0);
-    assert.equal(api.state.intents, 1);
     assert.equal(api.state.audits.length, 0);
   }
 });
@@ -129,12 +126,11 @@ test("a legacy password truncated by bcrypt cannot be reused as a supposedly dif
   assert.equal(api.state.writes, 0);
 });
 
-test("audit failure rolls back the password and pending link intents; concurrent changes return 409", async () => {
+test("audit failure rolls back the password; concurrent changes return 409", async () => {
   const api = route({ auditFails: true });
   assert.equal((await api.patch()).status, 500);
   assert.equal(api.state.passwordHash, oldHash);
   assert.equal(api.state.writes, 0);
-  assert.equal(api.state.intents, 1);
   assert.equal(api.state.audits.length, 0);
   assert.equal((await route({ conflict: true }).patch()).status, 409);
 });

@@ -3,7 +3,6 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { PERMISSIONS, ROLES, dashboardPathFor } from "@/lib/permissions";
 import { isActiveAccount } from "@/lib/account-status";
-import { microsoftSessionIsLinked } from "@/lib/microsoft-accounts";
 
 const AUTH_PAGES = ["/login", "/register"];
 
@@ -21,11 +20,19 @@ export async function proxy(request: NextRequest) {
   const isDashboardArea =
     pathname === "/dashboard" || pathname.startsWith("/dashboard/");
 
-  if (!token) {
-    if (isAdminArea || isOrganizerArea || isDashboardArea) {
-      return NextResponse.redirect(new URL("/login", request.url));
+  // Old provider sessions must not grant access after provider removal.
+  if (!token || "microsoftAccountId" in token) {
+    const response = isAdminArea || isOrganizerArea || isDashboardArea
+      ? NextResponse.redirect(new URL("/login", request.url))
+      : NextResponse.next();
+    if (token) {
+      for (const cookie of request.cookies.getAll()) {
+        if (/^(?:__Secure-)?next-auth\.session-token(?:\.\d+)?$/.test(cookie.name)) {
+          response.cookies.delete(cookie.name);
+        }
+      }
     }
-    return NextResponse.next();
+    return response;
   }
 
   const roles = (token.roles as string[] | undefined) ?? [];
@@ -33,7 +40,7 @@ export async function proxy(request: NextRequest) {
   const principal = { roles, permissions };
 
   if (AUTH_PAGES.includes(pathname) || pathname === "/") {
-    if (!(await isActiveAccount(token.uid)) || (token.microsoftAccountId && (!token.uid || !await microsoftSessionIsLinked(token.microsoftAccountId, token.uid)))) {
+    if (!(await isActiveAccount(token.uid))) {
       // Clear every session cookie chunk so a deleted account can reach login.
       const response = NextResponse.next();
       for (const cookie of request.cookies.getAll()) {

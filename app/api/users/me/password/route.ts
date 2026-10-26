@@ -30,8 +30,6 @@ export async function PATCH(request: Request) {
       const passwordHash = await bcrypt.hash(parsed.data.password, 10);
       step = "update";
       await tx.user.update({ where: { id: userId }, data: { passwordHash } });
-      step = "invalidate-links";
-      await tx.microsoftLinkIntent.deleteMany({ where: { userId } });
       step = "audit";
       await tx.auditLog.create({ data: { actorId: userId, action: "user.password.change", entityType: "User", entityId: userId } });
       return { changed: true };

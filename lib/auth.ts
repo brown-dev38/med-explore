@@ -2,17 +2,10 @@ import type { NextAuthOptions } from "next-auth";
 import { getServerSession } from "next-auth";
 import { connection } from "next/server";
 import CredentialsProvider from "next-auth/providers/credentials";
-import AzureADProvider from "next-auth/providers/azure-ad";
-import { cookies } from "next/headers";
 import bcrypt from "bcrypt";
 import { prisma } from "@/lib/prisma";
 import { getAccountStatus } from "@/lib/account-status";
-import { getMicrosoftConfig, microsoftIdentityFromProfile, MICROSOFT_LINK_COOKIE, MICROSOFT_PROVIDER_ID } from "@/lib/microsoft-config";
-import { completeMicrosoftLink, findMicrosoftAccount, microsoftSessionIsLinked, MicrosoftAccountError } from "@/lib/microsoft-accounts";
-import { toAuthUser } from "@/lib/auth-user";
-import { dashboardPathFor } from "@/lib/permissions";
-
-const microsoft = getMicrosoftConfig();
+import { authUserRelations, toAuthUser } from "@/lib/auth-user";
 
 export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt" },
@@ -37,19 +30,7 @@ export const authOptions: NextAuthOptions = {
               { username },
             ],
           },
-          include: {
-            userRoles: {
-              include: {
-                role: {
-                  include: {
-                    permissions: {
-                      include: { permission: true },
-                    },
-                  },
-                },
-              },
-            },
-          },
+          include: authUserRelations,
         });
 
         if (!user || !user.isActive || !user.passwordHash) return null;
@@ -60,56 +41,14 @@ export const authOptions: NextAuthOptions = {
         return toAuthUser(user);
       },
     }),
-    ...(microsoft ? [AzureADProvider({
-      ...microsoft,
-      name: "Microsoft",
-      idToken: true,
-      checks: ["pkce", "state", "nonce"],
-      authorization: { params: { scope: "openid profile email", prompt: "select_account" } },
-      // Use the validated ID token; fetching a photo from Microsoft Graph is unnecessary.
-      profile(profile) { return { id: profile.sub, name: typeof profile.name === "string" ? profile.name : "Microsoft", email: profile.email ?? null, image: null }; },
-    })] : []),
   ],
   callbacks: {
-    async signIn({ account, profile }) {
-      if (account?.provider !== MICROSOFT_PROVIDER_ID) return account?.provider === "credentials";
-      try {
-        const identity = microsoftIdentityFromProfile(profile, account.providerAccountId);
-        if (!identity) return "/login?error=MicrosoftTenant";
-        const intent = (await cookies()).get(MICROSOFT_LINK_COOKIE)?.value;
-        if (intent) {
-          const session = await getServerSession(authOptions);
-          if (!session?.user.id || session.accountStatus !== "ACTIVE") return "/login?error=MicrosoftLinkExpired";
-          const profilePath = `${dashboardPathFor(session.user)}/profile`;
-          try { await completeMicrosoftLink(intent, session.user.id, identity); }
-          catch (error) {
-            return `${profilePath}?microsoft=${error instanceof MicrosoftAccountError ? error.code : "unavailable"}`;
-          }
-          // Linking preserves the existing local session; it does not sign into another user.
-          return `${profilePath}?microsoft=linked`;
-        }
-        const linked = await findMicrosoftAccount(identity);
-        if (!linked) return "/login?error=MicrosoftNotLinked";
-        if (!linked.user.isActive) return "/login?reason=account-suspended";
-        return true;
-      } catch {
-        return "/login?error=MicrosoftUnavailable";
-      }
+    async signIn({ account }) {
+      return account?.provider === "credentials";
     },
-    async jwt({ token, user, account, profile }) {
-      if (account?.provider === MICROSOFT_PROVIDER_ID) {
-        const identity = microsoftIdentityFromProfile(profile, account.providerAccountId);
-        const linked = identity ? await findMicrosoftAccount(identity) : null;
-        if (!linked?.user.isActive) {
-          token.uid = undefined; token.roles = []; token.role = null; token.permissions = [];
-          token.accountStatus = linked ? "SUSPENDED" : "UNAUTHENTICATED";
-          delete token.microsoftAccountId;
-          return token;
-        }
-        user = toAuthUser(linked.user);
-        token.microsoftAccountId = String(linked.id);
-      } else if (user) delete token.microsoftAccountId;
+    async jwt({ token, user }) {
       if (user) {
+        delete token.microsoftAccountId;
         token.uid = user.id;
         token.role = user.role ?? null;
         token.roles = user.roles ?? [];
@@ -118,12 +57,10 @@ export const authOptions: NextAuthOptions = {
         token.name = user.name;
         token.email = user.email;
       } else {
-        token.accountStatus = token.uid
-          ? await getAccountStatus(token.uid)
-          : token.accountStatus ?? "UNAUTHENTICATED";
-        if (token.accountStatus === "ACTIVE" && token.microsoftAccountId && token.uid && !await microsoftSessionIsLinked(token.microsoftAccountId, token.uid)) {
-          token.accountStatus = "UNAUTHENTICATED";
-        }
+        // Reject sessions issued by the removed provider until their cookies expire.
+        token.accountStatus = "microsoftAccountId" in token
+          ? "UNAUTHENTICATED"
+          : token.uid ? await getAccountStatus(token.uid) : token.accountStatus ?? "UNAUTHENTICATED";
         if (token.accountStatus !== "ACTIVE" || !token.uid) {
           token.uid = undefined;
           token.role = null;

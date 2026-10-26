@@ -109,7 +109,6 @@ test("live HTTP: all roles change passwords and sign out, and ADMIN resets other
     const ids = fixtures.map((item) => item.user.id);
     if (ids.length) await db.$transaction(async (tx) => {
       await tx.auditLog.deleteMany({ where: { actorId: { in: ids } } });
-      await tx.microsoftLinkIntent.deleteMany({ where: { userId: { in: ids } } });
       await tx.userRole.deleteMany({ where: { userId: { in: ids } } });
       await tx.user.deleteMany({ where: { id: { in: ids } } });
     });

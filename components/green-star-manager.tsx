@@ -14,12 +14,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { GreenStarExcelImport } from "@/components/green-star-excel-import";
 
 type Candidate = { id: string; name: string; studentCode: string | null };
 type PendingAction = { helper: HelperAssignmentDto; status: HelperStatus };
 const STATUS_LABEL: Record<HelperStatus, string> = { ASSIGNED: "รอยืนยันการช่วยงาน", COMPLETED: "ช่วยงานสำเร็จ", CANCELLED: "ยกเลิกแล้ว" };
 
-export function GreenStarManager({ activityId, activityTitle, initialHelpers }: { activityId: string; activityTitle: string; initialHelpers: HelperAssignmentDto[] }) {
+export function GreenStarManager({ activityId, activityTitle, yearId, closed, initialHelpers }: { activityId: string; activityTitle: string; yearId: string; closed: boolean; initialHelpers: HelperAssignmentDto[] }) {
   const router = useRouter();
   const [helpers, setHelpers] = useState(initialHelpers);
   const [filter, setFilter] = useState("");
@@ -85,6 +86,7 @@ export function GreenStarManager({ activityId, activityTitle, initialHelpers }: 
   const awarded = helpers.reduce((sum, helper) => sum + helper.greenStarPoints, 0);
   return (
     <div className="space-y-4">
+      <GreenStarExcelImport target={{ mode: "activity", academicYearId: yearId, activityId }} targetLabel={activityTitle} disabled={closed || busy} onImported={reload} />
       <div className="grid gap-4 sm:grid-cols-3">
         {[{ label: "นิสิตช่วยงาน", value: `${helpers.length} คน` }, { label: "รอยืนยัน", value: `${helpers.filter((helper) => helper.status === "ASSIGNED").length} คน` }, { label: "ดาวสีเขียวที่ให้แล้ว", value: `${awarded} ดาว` }].map((stat) => <Card key={stat.label}><CardContent className="p-4"><p className="text-xs text-muted-foreground">{stat.label}</p><p className="mt-1 text-2xl font-bold tabular-nums">{stat.value}</p></CardContent></Card>)}
       </div>

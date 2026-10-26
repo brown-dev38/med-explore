@@ -14,17 +14,14 @@ DATABASE_PORT=3306
 # NextAuth
 NEXTAUTH_SECRET="<สุ่มด้วย `openssl rand -base64 32`>"
 NEXTAUTH_URL="http://localhost:3000"
-
-# Microsoft (ไม่บังคับ; เฉพาะองค์กรเดียว)
-MICROSOFT_TENANT_ID=""
-MICROSOFT_CLIENT_ID=""
-MICROSOFT_CLIENT_SECRET=""
 ```
 
 > `.env` ไม่ถูก commit ขึ้น git
-> การล็อกอินด้วยรหัสผ่านยิง API แบบ relative URL (`lib/auth-client.ts`) จึงใช้ผ่าน localhost หรือ LAN IP ได้ ส่วน Microsoft ต้องเปิดผ่าน URL หลักตาม `NEXTAUTH_URL` และลงทะเบียน callback ใน Entra ให้ตรงกัน ดู [คู่มือตั้งค่า Microsoft](microsoft-login.md)
+> การล็อกอินด้วยรหัสผ่านยิง API แบบ relative URL (`lib/auth-client.ts`) จึงใช้ผ่าน localhost หรือ LAN IP ได้
 
 ## คำสั่งที่ใช้บ่อย
+
+การอัปเดตที่ยกเลิก Microsoft login ให้รัน `npm run db:deploy` เพื่อใช้ migration `20261026090000_remove_microsoft_login` ซึ่งลบเฉพาะตารางบัญชีที่ผูกและคำขอผูกเดิม จากนั้นสร้าง Prisma Client และ build ใหม่ตามขั้นตอนปกติ บัญชีผู้ใช้ รหัสผ่าน และข้อมูลกิจกรรมยังคงอยู่ เซสชัน Microsoft เดิมถูกปฏิเสธและต้องเข้าสู่ระบบด้วยรหัสผ่าน
 
 ```bash
 npm install             # ติดตั้ง dependency (มี postinstall: prisma generate)
@@ -72,7 +69,7 @@ npx tsc --noEmit        # typecheck
 
 API เปลี่ยนรหัสผ่านตรวจ Origin กับ host/protocol ของคำขอที่ผู้ใช้เปิดจริง จึงใช้ผ่าน localhost, LAN HTTP/HTTPS และ reverse proxy ได้ โดยไม่ต้องเปลี่ยน `NEXTAUTH_URL` สำหรับการเปลี่ยนรหัสผ่าน
 
-หากมี reverse proxy ให้ตั้ง `Host` หรือ `X-Forwarded-Host` เป็น public host พร้อมพอร์ตตามจริง และ `X-Forwarded-Proto` เป็น `http` หรือ `https` ตาม URL ที่ผู้ใช้เปิด Proxy ต้องเขียนทับ forwarded headers จาก client ด้วยค่าที่เชื่อถือได้ ใช้ค่าเดียวต่อ header ระบบปฏิเสธคำขอที่ Origin ไม่ตรง ไม่มี Origin หรือมี forwarded headers หลายค่าที่กำกวม Microsoft ยังต้องใช้ URL หลักที่ลงทะเบียนไว้ตามคู่มือ
+หากมี reverse proxy ให้ตั้ง `Host` หรือ `X-Forwarded-Host` เป็น public host พร้อมพอร์ตตามจริง และ `X-Forwarded-Proto` เป็น `http` หรือ `https` ตาม URL ที่ผู้ใช้เปิด Proxy ต้องเขียนทับ forwarded headers จาก client ด้วยค่าที่เชื่อถือได้ ใช้ค่าเดียวต่อ header ระบบปฏิเสธคำขอที่ Origin ไม่ตรง ไม่มี Origin หรือมี forwarded headers หลายค่าที่กำกวม
 
 ## ผลตรวจสอบคุณภาพก่อนส่งงาน
 
@@ -100,7 +97,7 @@ Remove-Item Env:PASSWORD_HTTP_TEST_ORIGIN
 
 ## ข้อควรทราบ / ข้อจำกัด
 
-- **เปลี่ยนรหัสผ่าน**: ทุกบทบาทใช้หน้าโปรไฟล์ของตัวเอง โดยยืนยันรหัสผ่านปัจจุบันก่อน หาก STUDENT / ORGANIZER ลืมรหัสผ่าน ให้ ADMIN ตั้งใหม่ผ่านหน้าจัดการผู้ใช้ รหัสผ่าน Microsoft ต้องเปลี่ยนกับองค์กรโดยตรง
+- **เปลี่ยนรหัสผ่าน**: ทุกบทบาทใช้หน้าโปรไฟล์ของตัวเอง โดยยืนยันรหัสผ่านปัจจุบันก่อน หาก STUDENT / ORGANIZER ลืมรหัสผ่าน ให้ ADMIN ตั้งใหม่ผ่านหน้าจัดการผู้ใช้
 
 - **สิทธิ์ใน JWT จะค้าง**: เมื่อแอดมินแก้บทบาท/สิทธิ์ของผู้ใช้ ผู้ใช้นั้นต้อง **ล็อกอินใหม่** จึงจะได้สิทธิ์ใหม่ (token มีอายุตาม session)
 - **`cacheComponents`**: การอ่าน session/`cookies()` ต้องอยู่ใน `<Suspense>` และห้าม `setState` แบบ synchronous ใน `useEffect`

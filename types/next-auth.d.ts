@@ -23,7 +23,6 @@ declare module "next-auth/jwt" {
   interface JWT {
     accountStatus?: AccountStatus;
     uid?: string;
-    microsoftAccountId?: string;
     role?: string | null;
     roles?: string[];
     permissions?: string[];

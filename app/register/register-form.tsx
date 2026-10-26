@@ -10,8 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 const fields = [
-  { name: "firstname", label: "ชื่อจริง", autoComplete: "given-name", required: false },
-  { name: "lastname", label: "นามสกุล", autoComplete: "family-name", required: false },
+  { name: "firstname", label: "ชื่อจริง", autoComplete: "given-name", required: true },
+  { name: "lastname", label: "นามสกุล", autoComplete: "family-name", required: true },
   { name: "studentCode", label: "รหัสนิสิต", autoComplete: "off", required: true },
   { name: "username", label: "ชื่อผู้ใช้", autoComplete: "username", required: true },
   { name: "email", label: "อีเมล", autoComplete: "email", required: true },
@@ -30,6 +30,14 @@ export default function RegisterForm() {
     e.preventDefault();
     if (loading || success) return;
     setError(null);
+    if (!form.firstname.trim()) {
+      setError("กรุณาระบุชื่อจริง");
+      return;
+    }
+    if (!form.lastname.trim()) {
+      setError("กรุณาระบุนามสกุล");
+      return;
+    }
     if (!form.studentCode.trim()) {
       setError("กรุณาระบุรหัสนิสิต");
       return;
@@ -42,7 +50,7 @@ export default function RegisterForm() {
     try {
       const res = await fetch("/api/register", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: form.username.trim(), email: form.email.trim(), password: form.password, studentCode: form.studentCode.trim(), firstname: form.firstname.trim() || null, lastname: form.lastname.trim() || null }),
+        body: JSON.stringify({ username: form.username.trim(), email: form.email.trim(), password: form.password, studentCode: form.studentCode.trim(), firstname: form.firstname.trim(), lastname: form.lastname.trim() }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -74,7 +82,7 @@ export default function RegisterForm() {
           const password = field.name === "password" || field.name === "confirmPassword";
           return (
             <div key={field.name} className={field.name === "email" ? "space-y-2 sm:col-span-2" : "space-y-2"}>
-              <Label htmlFor={field.name}>{field.label}{!field.required && <span className="text-xs font-normal text-muted-foreground">(ไม่บังคับ)</span>}</Label>
+              <Label htmlFor={field.name}>{field.label}</Label>
               <Input id={field.name} name={field.name} type={password ? (showPassword ? "text" : "password") : field.name === "email" ? "email" : "text"} autoComplete={field.autoComplete} value={form[field.name]} onChange={(e) => setForm({ ...form, [field.name]: e.target.value })} required={field.required} disabled={loading} minLength={password ? 6 : undefined} maxLength={field.name === "studentCode" ? 50 : undefined} aria-describedby={password ? "password-hint" : field.name === "studentCode" ? "registration-hint" : undefined} />
             </div>
           );

@@ -7,7 +7,7 @@ const validation = loadTypeScript("../lib/password-validation.ts");
 const permissions = loadTypeScript("../lib/permissions.ts");
 const apiResponses = loadTypeScript("../lib/api.ts");
 function route({ actor = { id: "1", roles: ["ADMIN"] }, currentAdmin = true, roles = ["STUDENT"], missing = false, auditFails = false, conflict = false } = {}) {
-  const state = { passwordHash: "old-hash", writes: 0, hashes: 0, intents: 1, audits: [] };
+  const state = { passwordHash: "old-hash", writes: 0, hashes: 0, audits: [] };
   const target = () => ({ id: 2n, userRoles: roles.map((name) => ({ role: { name } })) });
   const tx = {
     user: {
@@ -22,7 +22,6 @@ function route({ actor = { id: "1", roles: ["ADMIN"] }, currentAdmin = true, rol
         state.passwordHash = data.passwordHash; state.writes++;
       },
     },
-    microsoftLinkIntent: { deleteMany: async ({ where }) => { assert.equal(where.userId, 2n); state.intents = 0; } },
     auditLog: { create: async ({ data }) => { if (auditFails) throw new Error("Audit failed"); state.audits.push(data); } },
   };
   const api = loadTypeScript("../app/api/users/[id]/password/route.ts", {
@@ -79,7 +78,6 @@ test("password resets hash a new local password for STUDENT and ORGANIZER withou
     assert.equal(await bcrypt.compare("new-password", api.state.passwordHash), true);
     assert.equal(await bcrypt.compare("old-password", api.state.passwordHash), false);
     assert.equal(api.state.writes, 1);
-    assert.equal(api.state.intents, 0);
     assert.deepEqual(api.state.audits, [{ actorId: 1n, action: "user.password.reset", entityType: "User", entityId: 2n, details: { role } }]);
   }
 });
@@ -90,7 +88,6 @@ test("ADMIN, unknown, roleless, and mixed-role targets cannot use this reset end
     assert.equal((await api.patch()).status, 403);
     assert.equal(api.state.hashes, 0);
     assert.equal(api.state.writes, 0);
-    assert.equal(api.state.intents, 1);
   }
 });
 
@@ -122,12 +119,11 @@ test("requests must be same-origin and targets must be valid database IDs", asyn
   assert.equal((await route({ missing: true }).patch()).status, 404);
 });
 
-test("audit failure rolls the password and pending links back; concurrent edits return a retry response", async () => {
+test("audit failure rolls the password back; concurrent edits return a retry response", async () => {
   const api = route({ auditFails: true });
   assert.equal((await api.patch()).status, 500);
   assert.equal(api.state.passwordHash, "old-hash");
   assert.equal(api.state.writes, 0);
-  assert.equal(api.state.intents, 1);
   assert.equal(api.state.audits.length, 0);
   assert.equal((await route({ conflict: true }).patch()).status, 409);
 });

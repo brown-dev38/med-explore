@@ -11,8 +11,14 @@ import { StudentYearSelector } from "@/components/student-year-selector";
 import { GreenStarManager } from "@/components/green-star-manager";
 import { GreenWorkAwardForm } from "@/components/green-work-award-form";
 import { GreenWorkHistory } from "@/components/green-work-history";
+import { GreenStarExcelImport } from "@/components/green-star-excel-import";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+
+const activityDateFormatter = new Intl.DateTimeFormat("th-TH", {
+  dateStyle: "medium",
+  timeZone: "Asia/Bangkok",
+});
 
 export type GreenStarsPageProps = { searchParams: Promise<StudentSearchParams> };
 
@@ -35,14 +41,14 @@ async function GreenStarsContent({ area, searchParams, activityMode = false }: G
       <div><h1 className="text-2xl font-bold tracking-tight">ดาวสีเขียว / นิสิตช่วยงาน</h1><p className="mt-1 text-sm text-muted-foreground">บันทึกงานช่วยเหลือทั่วไปและให้ดาวสีเขียวแก่นิสิต</p></div>
       {navigation}
       <StudentYearSelector years={years} selectedId={selectedYear?.id ?? null} basePath={basePath} />
-      {selectedYear ? <><GreenWorkAwardForm key={selectedYear.id} yearId={selectedYear.id} yearCode={selectedYear.code} closed={selectedYear.status === "CLOSED"} /><GreenWorkHistory yearId={selectedYear.id} basePath={basePath} query={query} requestedPage={page} /></>
+      {selectedYear ? <><GreenWorkAwardForm key={selectedYear.id} yearId={selectedYear.id} yearCode={selectedYear.code} closed={selectedYear.status === "CLOSED"} /><GreenStarExcelImport key={`import-${selectedYear.id}`} target={{ mode: "work", academicYearId: selectedYear.id }} targetLabel={`ปีการศึกษา ${selectedYear.code}`} disabled={selectedYear.status === "CLOSED"} /><GreenWorkHistory yearId={selectedYear.id} basePath={basePath} query={query} requestedPage={page} /></>
         : <p className="rounded-xl border border-dashed p-10 text-center text-muted-foreground">เพิ่มปีการศึกษาเพื่อเริ่มบันทึกงานช่วยเหลือและให้ดาวสีเขียว</p>}
     </div>;
   }
   if (Array.isArray(params.activityId)) notFound();
   const activities = selectedYear ? await prisma.activity.findMany({
     where: { academicYearId: BigInt(selectedYear.id) },
-    select: { id: true, title: true, status: true },
+    select: { id: true, title: true, status: true, startsAt: true, endsAt: true },
     orderBy: [{ startsAt: "desc" }, { id: "desc" }],
   }) : [];
   const selected = params.activityId ? activities.find((activity) => String(activity.id) === params.activityId) : activities[0];
@@ -58,12 +64,12 @@ async function GreenStarsContent({ area, searchParams, activityMode = false }: G
         <div className="min-w-0 flex-1 space-y-2"><Label htmlFor="helper-activity">กิจกรรมที่ช่วยงาน</Label>
           <select id="helper-activity" name="activityId" defaultValue={selected ? String(selected.id) : ""} key={selected ? String(selected.id) : "empty"} disabled={activities.length === 0} className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm">
             {activities.length === 0 && <option value="">ยังไม่มีกิจกรรมในปีการศึกษานี้</option>}
-            {activities.map((activity) => <option key={String(activity.id)} value={String(activity.id)}>{activity.title}</option>)}
+            {activities.map((activity) => <option key={String(activity.id)} value={String(activity.id)}>{activity.title} · {activityDateFormatter.formatRange(activity.startsAt, activity.endsAt)}</option>)}
           </select>
         </div>
         <Button type="submit" disabled={activities.length === 0}>แสดงรายชื่อผู้ช่วยงาน</Button>
       </form>}
-      {selected ? <GreenStarManager key={String(selected.id)} activityId={String(selected.id)} activityTitle={selected.title} initialHelpers={helpers} />
+      {selected && selectedYear ? <GreenStarManager key={String(selected.id)} activityId={String(selected.id)} activityTitle={selected.title} yearId={selectedYear.id} closed={selectedYear.status === "CLOSED"} initialHelpers={helpers} />
         : <p className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">{selectedYear ? "เพิ่มกิจกรรมในปีการศึกษานี้เพื่อเริ่มมอบหมายนิสิตช่วยงาน" : "เพิ่มปีการศึกษาและกิจกรรมเพื่อเริ่มมอบหมายนิสิตช่วยงาน"}</p>}
     </div>
   );
