@@ -20,6 +20,11 @@ export default function OrganizerActivitiesPage() {
 
 async function OrganizerActivitiesContent() {
   const user = await requirePermission(PERMISSIONS.ACTIVITY_MANAGE);
+  const academicYears = await prisma.academicYear.findMany({
+    orderBy: { startsOn: "desc" },
+    select: { id: true, code: true, status: true },
+  });
+  const activeAcademicYear = academicYears.find((year) => year.status === "ACTIVE");
 
   const activities = await prisma.activity.findMany({
     orderBy: { startsAt: "desc" },
@@ -34,16 +39,18 @@ async function OrganizerActivitiesContent() {
 
   return (
     <div className="space-y-6">
-      <div>
+      {/* <div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
           กิจกรรมที่จัด
         </h1>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
           สร้างกิจกรรม กำหนดช่วงเวลา เปิดรับลงทะเบียน และบันทึกการเข้างาน
         </p>
-      </div>
+      </div> */}
       <ActivitiesManager
         initial={initial}
+        academicYears={academicYears.map((year) => ({ ...year, id: String(year.id) }))}
+        activeAcademicYearCode={activeAcademicYear?.code ?? null}
         detailBasePath="/organizer/activities"
         canDeleteAll={hasRole(user, ROLES.ADMIN)}
       />

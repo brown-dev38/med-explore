@@ -4,10 +4,11 @@ import sharp from "sharp";
 import jsQR from "jsqr";
 import { loadTypeScript } from "./load-typescript.mjs";
 
-test("saved high-resolution check-in and checkout PNGs decode to the exact live scan URL", async () => {
+test("saved high-resolution check-in PNGs decode to the exact live scan URL", async () => {
   const qr = loadTypeScript("../lib/qr.ts", { "server-only": {} });
-  for (const purpose of ["CHECK_IN", "CHECK_OUT"]) {
+  for (const purpose of ["CHECK_IN"]) {
     let created;
+    let scheduled;
     const { POST } = loadTypeScript("../app/api/qr-sessions/route.ts", {
       "@/lib/prisma": { prisma: {
         activity: { findUnique: async () => ({ id: 4n }) },
@@ -18,6 +19,7 @@ test("saved high-resolution check-in and checkout PNGs decode to the exact live 
       "@/lib/validation": loadTypeScript("../lib/validation.ts"),
       "@/lib/api": loadTypeScript("../lib/api.ts"),
       "@/lib/audit": { recordAudit: async () => {} }, "@/lib/qr": qr,
+      "@/lib/attendance-worker": { scheduleAttendanceReview: (expiresAt) => { scheduled = expiresAt; } },
     });
     const response = await POST(new Request("https://example.test/api/qr-sessions", {
       method: "POST", body: JSON.stringify({ activityId: "4", purpose, ttlMinutes: 15 }),
@@ -39,5 +41,6 @@ test("saved high-resolution check-in and checkout PNGs decode to the exact live 
     assert.equal(url.searchParams.get("token"), data.token);
     assert.equal(created.tokenHash, qr.hashQrToken(data.token));
     assert.equal(created.purpose, purpose);
+    assert.equal(scheduled, created.expiresAt);
   }
 });

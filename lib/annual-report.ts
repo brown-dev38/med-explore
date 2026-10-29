@@ -6,7 +6,7 @@ import type { AnnualReportData } from "@/lib/annual-report-data";
 type Person = AnnualReportData["participations"][number]["user"];
 const yearStatuses = { DRAFT: "ฉบับร่าง", ACTIVE: "กำลังใช้งาน", CLOSED: "ปิดปีแล้ว" };
 const reviews = { PENDING: "รอพิจารณา", APPROVED: "อนุมัติ", REJECTED: "ไม่อนุมัติ" };
-const participationStatuses = { REGISTERED: "ลงทะเบียน", ATTENDED: "ผ่านเกณฑ์เวลา", INCOMPLETE: "บันทึกไม่ครบหรือไม่ผ่านเกณฑ์", ABSENT: "ไม่เข้าร่วม" };
+const participationStatuses = { REGISTERED: "ลงทะเบียน", ATTENDED: "เช็คอินแล้ว", INCOMPLETE: "รอตรวจสอบ", ABSENT: "ไม่เข้าร่วม" };
 const dateFormatter = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
 
 export function reportPersonName(user: Person) {
@@ -53,13 +53,12 @@ export function buildAnnualReport(data: AnnualReportData, filters: AnnualReportF
     const entered = countable && Boolean(checkIn && checkIn.occurredAt <= generatedAt);
     const complete = entered && Boolean(checkOut && checkOut.occurredAt <= generatedAt && measuredMinutes !== null);
     const minutes = complete ? measuredMinutes! : 0;
-    const qualified = complete && minutes >= activity.minMinutes;
+    const qualified = entered && p.eligibilityStatus === "APPROVED";
     student.registered++; totals.registered++;
     if (entered) { student.checkedIn++; totals.checkedIn++; uniqueAttendees.add(p.user.id); }
     if (complete) { student.completed++; totals.completed++; student.minutes += minutes; totals.minutes += minutes; }
     if (qualified) { student.qualified++; totals.qualified++; }
     if (checkOut && !checkIn) issue("เวลาเข้า–ออกไม่ครบ", String(p.id), activity.title, p.user, "มีเช็คเอาท์แต่ไม่มีเช็คอิน");
-    if (checkIn && !checkOut && (activity.status === "COMPLETED" || activity.endsAt <= generatedAt)) issue("ขาดเช็คเอาท์", String(p.id), activity.title, p.user, "กิจกรรมถึงกำหนดสิ้นสุดแล้ว แต่ยังไม่มีเวลาออก");
     if (checkIn && checkOut && measuredMinutes === null) issue("ลำดับเวลาไม่ถูกต้อง", String(p.id), activity.title, p.user, "เวลาออกอยู่ก่อนเวลาเข้า");
     if (p.attendanceRecords.some((r) => r.occurredAt > generatedAt)) issue("เวลาในอนาคต", String(p.id), activity.title, p.user, "ไม่นับเวลาในอนาคตในยอดเข้าร่วมจริง");
     if (complete && measuredMinutes !== p.attendedMinutes) issue("เวลาสรุปไม่ตรงกับบันทึก", String(p.id), activity.title, p.user, `จากบันทึก ${measuredMinutes} นาที / ค่าที่บันทึกสรุป ${p.attendedMinutes ?? "ยังไม่มี"}`);
@@ -68,7 +67,7 @@ export function buildAnnualReport(data: AnnualReportData, filters: AnnualReportF
       attendanceRows.push([String(p.id), String(activity.id), activity.title, ACTIVITY_REPORT_STATUSES[activity.status], String(p.user.id), p.user.studentCode ?? "", reportPersonName(p.user),
         participationStatuses[p.status], reportDate(checkIn?.occurredAt), checkIn?.method === "QR" ? "QR" : checkIn ? "ผู้จัดบันทึก" : "",
         reportDate(checkOut?.occurredAt), checkOut?.method === "QR" ? "QR" : checkOut ? "ผู้จัดบันทึก" : "", measuredMinutes,
-        activity.minMinutes, qualified ? "ผ่าน" : complete ? "ไม่ผ่าน" : "ยังประเมินไม่ได้", reviews[p.eligibilityStatus], yellowByParticipation.get(p.id) ?? 0,
+        qualified ? "เช็คอินผ่านประเมิน" : entered ? "เช็คอินแล้ว รอประเมิน" : "ยังไม่เช็คอิน", reviews[p.eligibilityStatus], yellowByParticipation.get(p.id) ?? 0,
         p.reviewNote ?? "", countable ? "นับตามบันทึกที่ไม่ใช่อนาคต" : "ไม่นับในยอดเข้าร่วมจริง"]);
     }
   }
@@ -135,13 +134,13 @@ export function buildAnnualReport(data: AnnualReportData, filters: AnnualReportF
     ["ประเภทรายงาน", ANNUAL_REPORTS.find((option) => option.id === filters.report)!.label], ["ตัวกรองรายละเอียด", annualReportFilterLabel(filters)], ["ขอบเขตภาพรวม", "ทั้งปีการศึกษาที่เลือก ทุกสถานะ"],
     ["กิจกรรมทั้งหมด", summary.activities], ...Object.entries(ACTIVITY_REPORT_STATUSES).map(([key, label]) => [`กิจกรรม: ${label}`, activities.filter((a) => a.status === key).length]),
     ["ลงทะเบียน (คนครั้ง)", summary.registrations], ["ผู้เช็คอิน (คนไม่ซ้ำ)", summary.uniqueAttendees], ["เช็คอิน (คนครั้ง)", summary.attendanceCount],
-    ["บันทึกเวลาเข้า–ออกครบ (คนครั้ง)", summary.completedCount], ["ผ่านเกณฑ์เวลา (คนครั้ง)", summary.qualifiedCount], ["เวลาเข้าร่วมจริงรวม (นาที)", summary.minutes],
+    ["บันทึกเวลาเข้า–ออกเดิม (คนครั้ง)", summary.completedCount], ["เช็คอินผ่านประเมิน (คนครั้ง)", summary.qualifiedCount], ["เวลาจากบันทึกเดิมรวม (นาที)", summary.minutes],
     ["ดาวเหลืองที่ได้รับอนุมัติ", summary.yellowStars], ["ดาวเขียวที่ได้รับอนุมัติ", summary.greenStars], ["ดาวเพิ่มที่อนุมัติทั้งหมด รวมปรับเพิ่ม", summary.earned],
     ["ดาวที่ใช้แลกรางวัล (อนุมัติ)", summary.spent], ["ยอดคงเหลือตามบัญชีประวัติ", summary.balance], ["ดาวกันไว้สำหรับคำขอรางวัล", summary.reserved],
     ["ดาวที่ใช้แลกได้ในระบบขณะนี้", summary.available], ["คำขอแลกรางวัลทั้งหมด", summary.redemptions], ["รายการที่ต้องตรวจสอบ", summary.issues],
     ["นิยามผู้เข้าร่วม", "นับเช็คอินของกิจกรรมเปิดรับลงทะเบียนหรือสิ้นสุดแล้ว และไม่นับบันทึกเวลาในอนาคต"],
     ["นิยามเวลาเข้าร่วม", "ใช้เวลาเข้า–ออกจริงที่ครบและเรียงลำดับถูกต้อง ไม่นับฉบับร่างและกิจกรรมยกเลิก"],
-    ["ผ่านเวลา / ได้รับดาว", "แยกผลผ่านเกณฑ์เวลาออกจากดาวที่ได้รับอนุมัติจริง ดาวเหลืองมีเพดานรายปี"],
+    ["กติกาดาวสีเหลือง", "เช็คอินแล้วรับดาวอัตโนมัติหลัง QR หมดอายุ ไม่ต้องเช็คเอาท์และไม่กำหนดนาทีขั้นต่ำ ดาวเหลืองมีเพดานรายปี ส่วนเวลาเข้า–ออกเป็นข้อมูลย้อนหลัง"],
     ["ยอดย้อนหลังเมื่อปิดปี", "แสดงยอดบัญชีประวัติไว้ แต่ดาวที่ใช้แลกได้ในระบบเป็นศูนย์เมื่อปิดปี"],
     ["ขอบเขตรายบุคคล", "เฉพาะผู้ที่มีรายการในปีนี้ ไม่ใช่ทะเบียนนิสิตทั้งปี และไม่ใช้ระบุผู้ที่ไม่เข้าร่วมเลย"],
     ["อันดับดาวรวมรายบุคคล", "เรียงดาวเหลืองและดาวเขียวที่ได้รับอนุมัติรวมจากมากไปน้อยในปีที่เลือก ไม่หักดาวแลกรางวัล ไม่รวมรายการปรับยอด คะแนนเท่ากันใช้อันดับร่วม เช่น 1, 1, 3"],
@@ -150,14 +149,14 @@ export function buildAnnualReport(data: AnnualReportData, filters: AnnualReportF
   ];
   const sheets: ReportSheet[] = [
     { id: "overview", name: "ภาพรวมประจำปี", columns: ["รายการ", "ข้อมูล / จำนวน"], rows: overview },
-    { id: "activities", name: "สรุปรายกิจกรรม", columns: ["รหัสกิจกรรม", "ชื่อกิจกรรม", "ผู้จัด", "สถานที่", "เริ่ม (เวลาประเทศไทย)", "สิ้นสุด (เวลาประเทศไทย)", "สถานะ", "เกณฑ์ขั้นต่ำ (นาที)", "ลงทะเบียน (คน)", "เช็คอิน (คน)", "เข้า–ออกครบ (คน)", "ผ่านเวลา (คน)", "เวลารวม (นาที)"],
+    { id: "activities", name: "สรุปรายกิจกรรม", columns: ["รหัสกิจกรรม", "ชื่อกิจกรรม", "ผู้จัด", "สถานที่", "เริ่ม (เวลาประเทศไทย)", "สิ้นสุด (เวลาประเทศไทย)", "สถานะ", "ลงทะเบียน (คน)", "เช็คอิน (คน)", "เข้า–ออกครบเดิม (คน)", "เช็คอินผ่านประเมิน (คน)", "เวลาจากบันทึกเดิม (นาที)"],
       rows: activities.filter((a) => filters.activityStatus === "all" || a.status === filters.activityStatus).map((a) => {
         const t = activityTotals.get(a.id)!;
-        return [String(a.id), a.title, reportPersonName(a.organizer), a.location ?? "", reportDate(a.startsAt), reportDate(a.endsAt), ACTIVITY_REPORT_STATUSES[a.status], a.minMinutes, t.registered, t.checkedIn, t.completed, t.qualified, t.minutes];
+        return [String(a.id), a.title, reportPersonName(a.organizer), a.location ?? "", reportDate(a.startsAt), reportDate(a.endsAt), ACTIVITY_REPORT_STATUSES[a.status], t.registered, t.checkedIn, t.completed, t.qualified, t.minutes];
       }) },
-    { id: "students", name: "สรุปรายบุคคล", columns: ["อันดับดาวรวม", "ดาวรวม (เหลือง + เขียว)", "รหัสบุคคล", "รหัสนิสิต", "ชื่อ–นามสกุล", "ลงทะเบียน (กิจกรรม)", "เช็คอิน (กิจกรรม)", "เข้า–ออกครบ (กิจกรรม)", "ผ่านเวลา (กิจกรรม)", "เวลารวม (นาที)", "งานช่วยเหลือสำเร็จ", "ดาวเหลืองได้รับ", "ดาวเขียวได้รับ", "ดาวเพิ่มอนุมัติทั้งหมด", "ดาวใช้แลกรางวัล", "ยอดบัญชีประวัติ", "ดาวกันไว้", "ดาวใช้แลกได้ขณะนี้"],
+    { id: "students", name: "สรุปรายบุคคล", columns: ["อันดับดาวรวม", "ดาวรวม (เหลือง + เขียว)", "รหัสบุคคล", "รหัสนิสิต", "ชื่อ–นามสกุล", "ลงทะเบียน (กิจกรรม)", "เช็คอิน (กิจกรรม)", "เข้า–ออกครบเดิม (กิจกรรม)", "เช็คอินผ่านประเมิน (กิจกรรม)", "เวลาจากบันทึกเดิม (นาที)", "งานช่วยเหลือสำเร็จ", "ดาวเหลืองได้รับ", "ดาวเขียวได้รับ", "ดาวเพิ่มอนุมัติทั้งหมด", "ดาวใช้แลกรางวัล", "ยอดบัญชีประวัติ", "ดาวกันไว้", "ดาวใช้แลกได้ขณะนี้"],
       rows: students.map((p, index) => [studentRanks[index], p.yellow + p.green, String(p.user.id), p.user.studentCode ?? "", reportPersonName(p.user), p.registered, p.checkedIn, p.completed, p.qualified, p.minutes, p.helped, p.yellow, p.green, p.earned, p.spent, p.balance, p.reserved, available(p)]) },
-    { id: "attendance", name: "รายละเอียดการเข้าร่วม", columns: ["รหัสลงทะเบียน", "รหัสกิจกรรม", "กิจกรรม", "สถานะกิจกรรม", "รหัสบุคคล", "รหัสนิสิต", "ชื่อ–นามสกุล", "สถานะการเข้าร่วม", "เวลาเข้า (ไทย)", "วิธีเช็คอิน", "เวลาออก (ไทย)", "วิธีเช็คเอาท์", "นาทีจากบันทึก", "เกณฑ์ขั้นต่ำ (นาที)", "ผลเกณฑ์เวลา", "ผลประเมิน", "ดาวเหลืองอนุมัติ", "หมายเหตุประเมิน", "การนับยอดรวม"], rows: attendanceRows },
+    { id: "attendance", name: "รายละเอียดการเข้าร่วม", columns: ["รหัสลงทะเบียน", "รหัสกิจกรรม", "กิจกรรม", "สถานะกิจกรรม", "รหัสบุคคล", "รหัสนิสิต", "ชื่อ–นามสกุล", "สถานะการเข้าร่วม", "เวลาเข้า (ไทย)", "วิธีเช็คอิน", "เวลาออกเดิม (ไทย)", "วิธีเช็คเอาท์เดิม", "นาทีจากบันทึกเดิม", "ผลการเช็คอิน", "ผลประเมิน", "ดาวเหลืองอนุมัติ", "หมายเหตุประเมิน", "การนับยอดรวม"], rows: attendanceRows },
     { id: "stars", name: "ประวัติรายการดาว", columns: ["รหัสรายการดาว", "รหัสบุคคล", "รหัสนิสิต", "ชื่อ–นามสกุล", "ประเภทดาว", "จำนวนเพิ่ม / ลด", "สถานะ", "กิจกรรม", "รหัสลงทะเบียน", "รหัสงานช่วยเหลือ", "รหัสคำขอรางวัล", "ของรางวัล", "เหตุผล", "ผู้อนุมัติ", "สร้างเมื่อ (ไทย)", "อนุมัติเมื่อ (ไทย)"], rows: starRows },
     { id: "redemptions", name: "การแลกรางวัล", columns: ["รหัสคำขอ", "รหัสบุคคล", "รหัสนิสิต", "ชื่อ–นามสกุล", "รางวัล", "ดาวที่ใช้ต่อคำขอ", "สถานะ", "วันที่ขอ (ไทย)", "วันที่พิจารณา (ไทย)", "วันที่แลก (ไทย)", "วันที่รับของ (ไทย)", "รหัสผู้พิจารณา", "หมายเหตุ"],
       rows: redemptions.filter((r) => filters.redemptionStatus === "all" || r.status === filters.redemptionStatus).map((r) => [String(r.id), String(r.user.id), r.user.studentCode ?? "", reportPersonName(r.user), r.rewardTier.name, r.costPoints, REDEMPTION_REPORT_STATUSES[r.status], reportDate(r.requestedAt), reportDate(r.reviewedAt), reportDate(r.redeemedAt), reportDate(r.completedAt), r.reviewedBy === null ? "" : String(r.reviewedBy), r.note ?? ""]) },

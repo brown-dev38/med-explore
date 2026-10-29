@@ -19,10 +19,8 @@ export async function POST(req: Request, { params }: RouteContext) {
   const parsed = bulkAttendanceSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return errorResponse(parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง", 400);
   const checkInAt = parsed.data.checkInAt ? new Date(parsed.data.checkInAt) : null;
-  const checkOutAt = parsed.data.checkOutAt ? new Date(parsed.data.checkOutAt) : null;
-  if (checkInAt && checkOutAt && checkOutAt < checkInAt) return errorResponse("เวลาเช็คเอาท์ต้องไม่อยู่ก่อนเวลาเช็คอิน", 400);
   try {
-    return successResponse(await bulkRecordAttendance(activityId, BigInt(user.id), checkInAt, checkOutAt));
+    return successResponse(await bulkRecordAttendance(activityId, BigInt(user.id), checkInAt, null));
   } catch (error) {
     if (error instanceof AttendanceError) return errorResponse(error.message, error.status);
     if ((error as { code?: string }).code === "P2034") return errorResponse("มีการแก้ไขเวลาพร้อมกัน กรุณาลองใหม่", 409);

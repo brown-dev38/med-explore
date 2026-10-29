@@ -112,7 +112,7 @@ async function UpcomingActivitiesContent({ searchParams, target }: StudentYearPa
 
               <CardFooter className="mt-auto flex-wrap justify-between gap-3 px-5 py-4">
                 <span className="text-xs whitespace-nowrap text-muted-foreground">
-                  เวลาขั้นต่ำ: {activity.minMinutes} นาที
+                  เช็คอินเพื่อรับดาวหลัง QR หมดอายุ
                 </span>
                 <Badge variant="outline" className="text-xs font-normal">
                   รอเปิดรับลงทะเบียน

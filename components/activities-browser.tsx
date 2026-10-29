@@ -85,10 +85,10 @@ export function ActivitiesBrowser({
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          เช็คอิน / เช็คเอาท์กิจกรรม
+          เช็คอินกิจกรรม
         </h1>
         <p className="text-sm text-muted-foreground">
-          สแกน QR Code จากหน้าจอผู้จัดเพื่อ Check-in หรือ Check-out กิจกรรม
+          สแกน QR Code จากหน้าจอผู้จัดเพื่อ Check-in กิจกรรม
         </p>
       </div>
 
@@ -110,7 +110,7 @@ export function ActivitiesBrowser({
           {items.map((activity) => {
             const mine = activity.myParticipation;
             const checkedIn = Boolean(mine?.checkInAt);
-            const checkedOut = Boolean(mine?.checkOutAt);
+            const checkedOut = checkedIn;
 
             return (
               <Card
@@ -163,22 +163,16 @@ export function ActivitiesBrowser({
                     <span>&bull;</span>
                     <span className="flex items-center gap-1">
                       <Clock className="h-3.5 w-3.5" />
-                      เกณฑ์ดาว: {activity.minMinutes} นาที
+                      รับดาวหลัง QR เช็คอินหมดอายุ
                     </span>
                   </div>
 
-                  {mine && (mine.checkInAt || mine.checkOutAt) && (
+                  {mine && mine.checkInAt && (
                     <div className="mt-3 space-y-1 rounded-lg bg-muted/50 p-2.5 text-xs">
                       {mine.checkInAt && (
                         <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400">
                           <CheckCircle2 className="h-3.5 w-3.5" />
                           <span>เช็คอิน: {formatThaiDateTime(mine.checkInAt)}</span>
-                        </div>
-                      )}
-                      {mine.checkOutAt && (
-                        <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          <span>เช็คเอาท์: {formatThaiDateTime(mine.checkOutAt)}</span>
                         </div>
                       )}
                     </div>
@@ -194,9 +188,7 @@ export function ActivitiesBrowser({
                         render={
                           <Link href={`/scan?academicYearId=${encodeURIComponent(academicYearId)}`}>
                             <QrCode className="size-4" aria-hidden="true" />
-                            {checkedIn
-                              ? "สแกน QR Check-out"
-                              : "สแกน QR Check-in"}
+                            สแกน QR Check-in
                           </Link>
                         }
                       />
@@ -206,7 +198,7 @@ export function ActivitiesBrowser({
                         className="py-1 px-3 bg-emerald-600 gap-1 text-xs"
                       >
                         <CheckCircle2 className="h-3.5 w-3.5" />
-                        บันทึกเวลาครบแล้ว
+                        เช็คอินแล้ว
                       </Badge>
                     )}
                   </div>

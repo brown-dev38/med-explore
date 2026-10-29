@@ -93,7 +93,7 @@ test("active ADMIN count is global even when the user list is filtered and pagin
           return 1;
         }
         assert.equal(where.userRoles.some.role.name, "STUDENT");
-        assert.ok(where.OR.length > 0);
+        assert.ok(where.OR.some((filter) => filter.studentCode?.contains === "001234"));
         return 0;
       },
       findMany: async () => [],
@@ -104,7 +104,7 @@ test("active ADMIN count is global even when the user list is filtered and pagin
     "@/lib/users": users,
     "@/lib/api": { successResponse: (data) => Response.json({ success: true, data }) },
   });
-  const response = await api.GET(new Request("http://localhost/api/users?q=student&role=STUDENT&page=2&pageSize=1"));
+  const response = await api.GET(new Request("http://localhost/api/users?q=001234&role=STUDENT&page=2&pageSize=1"));
   const { data } = await response.json();
   assert.equal(data.activeAdminCount, 1);
   assert.equal(data.total, 0);

@@ -125,7 +125,6 @@ test("ADMIN and ORGANIZER can edit draft start/end times, with old and new dates
     assert.deepEqual(api.audits[0].details, {
       title: fixture.title, status: "DRAFT",
       previousStartsAt: fixture.startsAt.toISOString(), previousEndsAt: fixture.endsAt.toISOString(), ...schedule,
-      previousMinMinutes: fixture.minMinutes, minMinutes: fixture.minMinutes,
     });
   }
 });
@@ -133,7 +132,7 @@ test("ADMIN and ORGANIZER can edit draft start/end times, with old and new dates
 test("published, completed and cancelled schedules cannot be changed, including a simultaneous draft status override", async () => {
   for (const role of ["ADMIN", "ORGANIZER"]) {
     for (const status of ["PUBLISHED", "COMPLETED", "CANCELLED"]) {
-      for (const body of [schedule, { startsAt: schedule.startsAt }, { endsAt: schedule.endsAt }, { minMinutes: 60 }, { ...schedule, status: "DRAFT" }, { minMinutes: 60, status: "DRAFT" }]) {
+      for (const body of [schedule, { startsAt: schedule.startsAt }, { endsAt: schedule.endsAt }, { ...schedule, status: "DRAFT" }]) {
         const api = routes(principal(role), { status });
         assert.equal((await api.patch(body)).status, 409);
         assert.equal(api.current().status, status);
@@ -146,7 +145,7 @@ test("published, completed and cancelled schedules cannot be changed, including 
 
 test("guests and students cannot edit schedules, including a student with activity.manage", async () => {
   for (const user of [null, principal("STUDENT"), { id: "9", roles: ["STUDENT"], permissions: ["activity.manage"] }]) {
-    for (const body of [schedule, { minMinutes: 60 }]) {
+    for (const body of [schedule]) {
       const api = routes(user);
       assert.equal((await api.patch(body)).status, user ? 403 : 401);
       assert.ok(!api.calls.includes("update"));
@@ -184,34 +183,16 @@ test("partial edits and activities crossing midnight preserve a valid full inter
   }
 });
 
-test("a concurrent publication, schedule or threshold change prevents saving against stale validation", async () => {
+test("a concurrent publication, schedule change prevents saving against stale validation", async () => {
   for (const concurrentChange of [
     { status: "PUBLISHED" }, { status: "COMPLETED" },
     { startsAt: new Date("2026-11-01T01:30:00Z") }, { endsAt: new Date("2026-11-01T03:30:00Z") },
-    { minMinutes: 120 },
   ]) {
-    for (const body of [schedule, { minMinutes: 60 }]) {
+    for (const body of [schedule]) {
       const api = routes(principal("ADMIN"), { concurrentChange });
       assert.equal((await api.patch(body)).status, 409);
       assert.ok(!api.calls.includes("update"));
       assert.equal(api.audits.length, 0);
-    }
-  }
-});
-
-test("ADMIN and ORGANIZER can update only the draft attendance threshold, including both limits", async () => {
-  for (const role of ["ADMIN", "ORGANIZER"]) {
-    for (const minMinutes of [1, 60, 1440]) {
-      const api = routes(principal(role));
-      const response = await api.patch({ minMinutes });
-      assert.equal(response.status, 200);
-      const { data } = await response.json();
-      assert.equal(data.minMinutes, minMinutes);
-      assert.equal(data.startsAt, fixture.startsAt.toISOString());
-      assert.equal(data.endsAt, fixture.endsAt.toISOString());
-      assert.deepEqual(api.calls, ["find", "update", "recalculate"]);
-      assert.equal(api.audits[0].details.previousMinMinutes, 90);
-      assert.equal(api.audits[0].details.minMinutes, minMinutes);
     }
   }
 });
@@ -259,10 +240,9 @@ function editor(status = "DRAFT", changes = {}) {
     return nodes(ActivityScheduleEditor({ activity, onSaved: (value) => saved.push(value), onConflict: () => { conflicts++; } }));
   }
   function open() { render().find((node) => node.type === "button").props.onClick(); return render(); }
-  function fill(startsAt, endsAt, minMinutes) {
+  function fill(startsAt, endsAt) {
     render().find((node) => node.type === "input" && node.props.id.endsWith("-start")).props.onChange({ target: { value: startsAt } });
     render().find((node) => node.type === "input" && node.props.id.endsWith("-end")).props.onChange({ target: { value: endsAt } });
-    if (minMinutes !== undefined) render().find((node) => node.type === "input" && node.props.type === "number").props.onChange({ target: { value: minMinutes } });
   }
   return { render, open, fill, saved, messages, refreshes: () => refreshes, conflicts: () => conflicts,
     submit: () => render().find((node) => node.type === "form").props.onSubmit({ preventDefault() {} }),
@@ -273,18 +253,18 @@ test("the schedule editor is absent for every non-draft status", () => {
   for (const status of ["PUBLISHED", "COMPLETED", "CANCELLED"]) assert.deepEqual(editor(status).render(), []);
 });
 
-test("opening pre-fills timing and saving submits local times as ISO dates together with the threshold", async (context) => {
+test("opening pre-fills timing and saving submits local times as ISO dates without any minimum-minute field", async (context) => {
   const ui = editor();
   const inputs = ui.open().filter((node) => node.type === "input");
   assert.equal(new Date(inputs[0].props.value).getTime(), fixture.startsAt.getTime());
   assert.equal(new Date(inputs[1].props.value).getTime(), fixture.endsAt.getTime());
-  assert.equal(inputs[2].props.value, "90");
+  assert.equal(inputs.length, 2);
   ui.fill("2026-11-03T23:00", "2026-11-04T01:00", "60");
   const updated = { id: "4", startsAt: new Date("2026-11-03T23:00").toISOString(), endsAt: new Date("2026-11-04T01:00").toISOString(), minMinutes: 60 };
   context.mock.method(globalThis, "fetch", async (url, request) => {
     assert.equal(url, "/api/activities/4");
     assert.equal(request.method, "PATCH");
-    assert.deepEqual(JSON.parse(request.body), { startsAt: updated.startsAt, endsAt: updated.endsAt, minMinutes: 60 });
+    assert.deepEqual(JSON.parse(request.body), { startsAt: updated.startsAt, endsAt: updated.endsAt });
     return Response.json({ success: true, data: updated });
   });
   await ui.submit();
@@ -301,10 +281,6 @@ test("invalid editor intervals do not send requests and conflicts close and refr
     ui.fill(start, end);
     await ui.submit();
   }
-  for (const minMinutes of ["", "0", "-1", "1.5", "1441", "invalid"]) {
-    ui.fill("2026-11-03T09:00", "2026-11-03T11:00", minMinutes);
-    await ui.submit();
-  }
   assert.equal(request.mock.callCount(), 0);
   ui.fill("2026-11-03T09:00", "2026-11-03T11:00", "60");
   await ui.submit();
@@ -315,13 +291,13 @@ test("invalid editor intervals do not send requests and conflicts close and refr
   assert.equal(ui.render().find((node) => node.type === "Dialog").props.open, false);
 });
 
-test("changing only the threshold preserves original timestamp seconds", async (context) => {
+test("saving unchanged times preserves original timestamp seconds", async (context) => {
   const dates = { startsAt: "2026-11-01T02:00:37.000Z", endsAt: "2026-11-01T04:00:48.000Z" };
   const ui = editor("DRAFT", dates);
   const inputs = ui.open().filter((node) => node.type === "input");
   ui.fill(inputs[0].props.value, inputs[1].props.value, "75");
   const request = context.mock.method(globalThis, "fetch", async (_url, options) => {
-    assert.deepEqual(JSON.parse(options.body), { ...dates, minMinutes: 75 });
+    assert.deepEqual(JSON.parse(options.body), { ...dates });
     return Response.json({ data: { id: "4", ...dates, minMinutes: 75 } });
   });
   await ui.submit();

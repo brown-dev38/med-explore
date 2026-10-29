@@ -21,8 +21,8 @@ test("annual totals distinguish people, visits, actual minutes, earned stars, sp
   const report = build(data);
   assert.equal(report.sheets.length, 7);
   assert.deepEqual(report.summary, {
-    activities: 5, registrations: 5, uniqueAttendees: 2, attendanceCount: 4, completedCount: 2, qualifiedCount: 1, minutes: 180,
-    yellowStars: 1, greenStars: 5, earned: 8, spent: 3, balance: 4, reserved: 2, available: 2, redemptions: 3, issues: 5,
+    activities: 5, registrations: 5, uniqueAttendees: 2, attendanceCount: 4, completedCount: 2, qualifiedCount: 4, minutes: 180,
+    yellowStars: 1, greenStars: 5, earned: 8, spent: 3, balance: 4, reserved: 2, available: 2, redemptions: 3, issues: 4,
   });
   const people = report.sheets.find((s) => s.id === "students").rows;
   assert.equal(people.length, 3, "assigned helpers with no other records are still represented");
@@ -33,7 +33,7 @@ test("annual totals distinguish people, visits, actual minutes, earned stars, sp
   assert.equal(student[9], 120, "cancelled activities do not add attendance minutes");
   const issues = report.sheets.find((s) => s.id === "issues").rows.map((row) => row[0]);
   assert.ok(issues.includes("ฉบับร่างเลยกำหนด"));
-  assert.ok(issues.includes("ขาดเช็คเอาท์"));
+  assert.ok(!issues.includes("ขาดเช็คเอาท์"));
   assert.deepEqual(data, original, "exporting does not recalculate or modify stored records");
 });
 

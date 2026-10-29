@@ -1,6 +1,7 @@
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { setImmediate } from "node:timers/promises";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
@@ -42,130 +43,99 @@ async function rollbackTest(fn) {
   }, { timeout: 30000 }), (error) => error === rollback);
 }
 
-test("real check-in and checkout calculate minutes, award one approved star, and reject duplicate scans", { skip: !db }, async () => {
-  await rollbackTest(async ({ tx, actor, participation, write, awarded }) => {
-    const checkIn = await write("CHECK_IN", 0);
-    assert.equal(checkIn.evaluation.attendedMinutes, null);
-    assert.equal(checkIn.evaluation.yellowStarPoints, 0);
-    const checkOut = await write("CHECK_OUT", 90);
-    assert.equal(checkOut.evaluation.attendedMinutes, 90);
-    assert.equal(checkOut.evaluation.yellowStarPoints, 1);
-    const stored = await tx.participation.findUniqueOrThrow({ where: { id: participation.id } });
-    assert.equal(stored.status, "ATTENDED");
-    assert.equal(stored.eligibilityStatus, "APPROVED");
-    assert.equal((await awarded())._sum.points, 1);
-    await assert.rejects(write("CHECK_OUT", 90), (error) => error.status === 409);
-    await assert.rejects(write("CHECK_IN", 120), (error) => error.status === 409);
-    await write("CHECK_OUT", 90, true);
-    assert.equal(await tx.starTransaction.count({ where: { participationId: participation.id } }), 1);
-    assert.equal(await tx.auditLog.count({ where: { action: "star.auto_award", actorId: actor.id } }), 1);
-  });
-});
-
-test("89 minutes 59 seconds does not qualify, and correcting attendance revokes/restores the same star", { skip: !db }, async () => {
-  await rollbackTest(async ({ tx, participation, write, awarded }) => {
-    await write("CHECK_IN", 0);
-    const short = await write("CHECK_OUT", 89 + 59 / 60);
-    assert.equal(short.evaluation.attendedMinutes, 89);
-    assert.equal(short.evaluation.yellowStarPoints, 0);
-    assert.equal(short.evaluation.status, "INCOMPLETE");
-    await write("CHECK_OUT", 100, true);
-    assert.equal((await awarded())._sum.points, 1);
-    await write("CHECK_OUT", 40, true);
+test("real QR check-in waits for expiry, awards without checkout, and retries do not duplicate stars", { skip: !db }, async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: start });
+  await rollbackTest(async ({ tx, attendance, actor, activity, participation, awarded }) => {
+    const session = await tx.qrSession.create({ data: {
+      activityId: activity.id, createdBy: actor.id, purpose: "CHECK_IN", tokenHash: randomUUID(), expiresAt: atMinute(15), createdAt: start,
+    } });
+    const record = () => attendance.recordAttendance({ participationId: participation.id, eventType: "CHECK_IN", method: "QR", occurredAt: start, recordedBy: actor.id, qrSessionId: session.id });
+    assert.equal((await record()).evaluation.yellowStarPoints, 0);
     assert.equal((await awarded())._sum.points, null);
-    await write("CHECK_OUT", 90, true);
+    const pending = await tx.participation.findUniqueOrThrow({ where: { id: participation.id } });
+    assert.equal(pending.reviewDueAt.getTime(), session.expiresAt.getTime());
+    assert.equal(pending.eligibilityStatus, "PENDING");
+    await assert.rejects(record(), (error) => error.status === 409);
+    t.mock.timers.setTime(atMinute(15).getTime());
+    assert.deepEqual(await attendance.backfillAttendanceResults([participation.id]), { processed: 1, approvedYellowStars: 1 });
+    assert.deepEqual(await attendance.backfillAttendanceResults([participation.id]), { processed: 0, approvedYellowStars: 0 });
     assert.equal((await awarded())._sum.points, 1);
+    assert.equal(await tx.attendanceRecord.count({ where: { participationId: participation.id, eventType: "CHECK_OUT" } }), 0);
     assert.equal(await tx.starTransaction.count({ where: { participationId: participation.id } }), 1);
+    const star = await tx.starTransaction.findUniqueOrThrow({ where: { participationId_starType: { participationId: participation.id, starType: "YELLOW" } } });
+    assert.equal(await tx.auditLog.count({ where: { action: "star.auto_award", entityId: star.id } }), 1);
   });
 });
 
-test("the yearly cap is 12 yellow stars and is independent of green stars or another academic year", { skip: !db }, async () => {
-  await rollbackTest(async ({ tx, user, year, token, write, awarded, attendance, actor, createActivity }) => {
+test("the scheduled QR expiry writes a real yellow star without an admin request or recalculation", { skip: !db }, async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: start });
+  for (const key of ["attendanceWorker", "attendanceWorkerRunning", "attendanceWorkerRerun", "attendanceReviewDeadlines", "attendanceReviewTimer", "attendanceNextReview"]) {
+    const previous = globalThis[key]; delete globalThis[key];
+    t.after(() => previous === undefined ? delete globalThis[key] : globalThis[key] = previous);
+  }
+  let expire;
+  let batch;
+  t.mock.method(globalThis, "setInterval", () => ({ unref() {} }));
+  const realTimeout = globalThis.setTimeout;
+  t.mock.method(globalThis, "setTimeout", (callback, delay, ...args) => {
+    if (delay !== 15 * 60000) return realTimeout(callback, delay, ...args);
+    expire = callback; return { unref() {} };
+  });
+  await rollbackTest(async ({ tx, attendance, actor, activity, participation, awarded }) => {
+    const session = await tx.qrSession.create({ data: {
+      activityId: activity.id, createdBy: actor.id, purpose: "CHECK_IN", tokenHash: randomUUID(), expiresAt: atMinute(15), createdAt: start,
+    } });
+    await attendance.recordAttendance({ participationId: participation.id, eventType: "CHECK_IN", method: "QR", occurredAt: start, recordedBy: actor.id, qrSessionId: session.id });
+    const { scheduleAttendanceReview } = loadTypeScript("../lib/attendance-worker.ts", {
+      "server-only": {}, "@/lib/attendance": { backfillAttendanceResults: () => {
+        batch = attendance.backfillAttendanceResults([participation.id]); return batch;
+      } },
+    });
+    scheduleAttendanceReview(session.expiresAt);
+    await batch; await setImmediate();
+    assert.equal((await awarded())._sum.points, null);
+    t.mock.timers.setTime(session.expiresAt.getTime());
+    expire(); await batch; await setImmediate();
+    assert.equal((await awarded())._sum.points, 1);
+    assert.equal(await tx.starTransaction.count({ where: { participationId: participation.id } }), 1);
+    assert.equal(await tx.attendanceRecord.count({ where: { participationId: participation.id, eventType: "CHECK_OUT" } }), 0);
+  });
+});
+
+test("real manual check-in ignores minimum minutes; cancellation revokes and restoring does not duplicate", { skip: !db }, async () => {
+  await rollbackTest(async ({ tx, attendance, actor, activity, write, awarded, participation }) => {
+    await tx.activity.update({ where: { id: activity.id }, data: { minMinutes: 1440 } });
+    assert.equal((await write("CHECK_IN", 0)).evaluation.yellowStarPoints, 1);
+    for (const [status, points] of [["CANCELLED", null], ["PUBLISHED", 1]]) {
+      await tx.activity.update({ where: { id: activity.id }, data: { status } });
+      await attendance.attendanceTransaction((transaction) => attendance.recalculateActivityAttendance(transaction, activity.id, actor.id));
+      assert.equal((await awarded())._sum.points, points);
+    }
+    assert.equal(await tx.starTransaction.count({ where: { participationId: participation.id } }), 1);
+    await assert.rejects(write("CHECK_OUT", 15), (error) => error.status === 400);
+  });
+});
+
+test("the real yearly limit stays at twelve yellow stars, independently of green stars", { skip: !db }, async () => {
+  await rollbackTest(async ({ tx, user, year, write, awarded, attendance, actor, createActivity }) => {
     await tx.starTransaction.createMany({ data: [
       ...Array.from({ length: 11 }, () => ({ userId: user.id, academicYearId: year.id, starType: "YELLOW", points: 1, status: "APPROVED" })),
       { userId: user.id, academicYearId: year.id, starType: "GREEN", points: 20, status: "APPROVED" },
     ] });
     await write("CHECK_IN", 0);
-    await write("CHECK_OUT", 90);
-    await write("CHECK_OUT", 90, true);
     assert.equal((await awarded())._sum.points, 12);
     const secondActivity = await createActivity();
     const second = await tx.participation.create({ data: { activityId: secondActivity.id, userId: user.id } });
-    await write("CHECK_IN", 0, false, second.id);
-    const capped = await write("CHECK_OUT", 90, false, second.id);
-    assert.equal(capped.evaluation.yellowStarPoints, 0);
-    assert.equal(capped.evaluation.eligibilityStatus, "APPROVED");
-    assert.match(capped.evaluation.message, /12/);
+    assert.equal((await attendance.recordAttendance({ participationId: second.id, eventType: "CHECK_IN", method: "ORGANIZER", occurredAt: start, recordedBy: actor.id })).evaluation.yellowStarPoints, 0);
     assert.equal((await awarded())._sum.points, 12);
-    await write("CHECK_OUT", 20, true);
-    await attendance.attendanceTransaction((transaction) => attendance.recalculateActivityAttendance(transaction, secondActivity.id, actor.id));
-    assert.equal((await awarded())._sum.points, 12);
-    const otherYear = await tx.academicYear.create({ data: { code: `next-${token.slice(0, 12)}`, startsOn: new Date("2027-01-01"), endsOn: new Date("2028-01-01") } });
-    const otherActivity = await createActivity(otherYear.id);
-    const other = await tx.participation.create({ data: { activityId: otherActivity.id, userId: user.id } });
-    await write("CHECK_IN", 0, false, other.id);
-    assert.equal((await write("CHECK_OUT", 90, false, other.id)).evaluation.yellowStarPoints, 1);
   });
 });
 
-test("bulk attendance skips missing check-ins and gives each student exactly one star", { skip: !db }, async () => {
-  await rollbackTest(async ({ tx, attendance, activity, actor, studentRole, token, write, user }) => {
-    const secondUser = await tx.user.create({ data: { username: `second-${token}`, email: `second-${token}@example.test`, userRoles: { create: [{ roleId: studentRole.id }] } } });
-    const second = await tx.participation.create({ data: { activityId: activity.id, userId: secondUser.id } });
-    await write("CHECK_IN", 0);
-    const first = await attendance.bulkRecordAttendance(activity.id, actor.id, null, atMinute(90));
-    assert.equal(first.updated, 1);
-    assert.equal(first.skippedCheckOut, 1);
-    assert.equal(await tx.attendanceRecord.count({ where: { participationId: second.id } }), 0);
-    await attendance.bulkRecordAttendance(activity.id, actor.id, start, atMinute(90));
-    for (const userId of [user.id, secondUser.id]) {
-      assert.equal(await tx.starTransaction.count({ where: { userId, starType: "YELLOW", status: "APPROVED" } }), 1);
-    }
-  });
-});
-
-test("invalid time edits are rejected and legacy negative intervals are flagged without stars", { skip: !db }, async () => {
-  await rollbackTest(async ({ tx, participation, attendance, actor, activity, write, awarded }) => {
-    await assert.rejects(write("CHECK_OUT", 90), (error) => error.status === 400);
-    await write("CHECK_IN", 0);
-    await assert.rejects(write("CHECK_OUT", -1), (error) => error.status === 400);
-    await write("CHECK_OUT", 90);
-    await assert.rejects(write("CHECK_IN", 100, true), (error) => error.status === 400);
-    assert.equal((await awarded())._sum.points, 1);
-    await tx.attendanceRecord.updateMany({ where: { participationId: participation.id, eventType: "CHECK_OUT" }, data: { occurredAt: atMinute(-5) } });
-    await attendance.attendanceTransaction((transaction) => attendance.recalculateActivityAttendance(transaction, activity.id, actor.id));
-    assert.equal((await awarded())._sum.points, null);
-    const stored = await tx.participation.findUniqueOrThrow({ where: { id: participation.id } });
-    assert.equal(stored.attendedMinutes, 0);
-    assert.match(stored.reviewNote, /ก่อนเช็คอิน/);
-  });
-});
-
-test("recalculation applies cancellation and changed minute thresholds without duplicate stars", { skip: !db }, async () => {
-  await rollbackTest(async ({ tx, attendance, actor, activity, write, awarded }) => {
-    await write("CHECK_IN", 0);
-    await write("CHECK_OUT", 120);
-    for (const [data, points] of [[{ status: "CANCELLED" }, null], [{ status: "PUBLISHED", minMinutes: 121 }, null], [{ minMinutes: 90 }, 1]]) {
-      await tx.activity.update({ where: { id: activity.id }, data });
-      await attendance.attendanceTransaction((transaction) => attendance.recalculateActivityAttendance(transaction, activity.id, actor.id));
-      assert.equal((await awarded())._sum.points, points);
-    }
-  });
-});
-
-test("legacy attendance is backfilled by the system once without manual ADMIN approval", { skip: !db }, async () => {
+test("real legacy check-in without checkout is processed automatically once", { skip: !db }, async () => {
   await rollbackTest(async ({ tx, attendance, actor, participation, awarded }) => {
-    await tx.attendanceRecord.createMany({ data: [
-      { participationId: participation.id, eventType: "CHECK_IN", method: "QR", occurredAt: start, recordedBy: actor.id },
-      { participationId: participation.id, eventType: "CHECK_OUT", method: "QR", occurredAt: atMinute(90), recordedBy: actor.id },
-    ] });
-    assert.equal((await tx.participation.findUniqueOrThrow({ where: { id: participation.id } })).attendedMinutes, null);
+    await tx.attendanceRecord.create({ data: { participationId: participation.id, eventType: "CHECK_IN", method: "QR", occurredAt: start, recordedBy: actor.id } });
     assert.deepEqual(await attendance.backfillAttendanceResults([participation.id]), { processed: 1, approvedYellowStars: 1 });
-    assert.equal((await tx.participation.findUniqueOrThrow({ where: { id: participation.id } })).attendedMinutes, 90);
     assert.equal((await awarded())._sum.points, 1);
-    const audit = await tx.auditLog.findFirst({ where: { action: "attendance.backfill", details: { path: "$.participationIds", array_contains: String(participation.id) } } });
-    assert.equal(audit.actorId, null);
     assert.deepEqual(await attendance.backfillAttendanceResults([participation.id]), { processed: 0, approvedYellowStars: 0 });
-    assert.equal(await tx.starTransaction.count({ where: { participationId: participation.id, starType: "YELLOW" } }), 1);
   });
 });

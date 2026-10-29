@@ -50,7 +50,13 @@ async function StudentListContent({ area, searchParams }: StudentListPageProps &
             {students.map((student) => <TableRow key={String(student.id)}>
               <TableCell>{student.studentCode ?? "—"}</TableCell>
               <TableCell>{[student.firstname, student.lastname].filter(Boolean).join(" ") || student.username}</TableCell>
-              <TableCell>{student.isActive ? "ใช้งานปกติ" : "ปิดใช้งาน"}</TableCell>
+              <TableCell>
+                <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${student.isActive
+                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                  : "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300"}`}>
+                  {student.isActive ? "ใช้งานปกติ" : "ปิดใช้งาน"}
+                </span>
+              </TableCell>
               <TableCell><Link href={`/${area}/students/${student.id}/dashboard`} className="font-medium text-primary underline underline-offset-4">ดูข้อมูลนิสิต<span className="sr-only"> {student.studentCode ?? student.username}</span></Link></TableCell>
             </TableRow>)}
           </TableBody>

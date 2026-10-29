@@ -68,10 +68,10 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     );
   }
 
-  const { title, description, location, startsAt, endsAt, minMinutes, status } =
+  const { title, description, location, startsAt, endsAt, status } =
     parsed.data;
 
-  const editsSchedule = startsAt !== undefined || endsAt !== undefined || minMinutes !== undefined;
+  const editsSchedule = startsAt !== undefined || endsAt !== undefined;
   if (editsSchedule && !hasRole(user, ROLES.ADMIN) && !hasRole(user, ROLES.ORGANIZER)) {
     return errorResponse("เฉพาะผู้ดูแลและผู้จัดกิจกรรมเท่านั้นที่แก้ไขเวลาและเกณฑ์ขั้นต่ำได้", 403);
   }
@@ -84,8 +84,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     description !== undefined ||
     location !== undefined ||
     startsAt !== undefined ||
-    endsAt !== undefined ||
-    minMinutes !== undefined;
+    endsAt !== undefined;
 
   if (
     (current.status === "COMPLETED" || current.status === "CANCELLED") &&
@@ -106,7 +105,6 @@ export async function PATCH(req: Request, { params }: RouteContext) {
   if (location !== undefined) data.location = location ?? null;
   if (startsAt !== undefined) data.startsAt = new Date(startsAt);
   if (endsAt !== undefined) data.endsAt = new Date(endsAt);
-  if (minMinutes !== undefined) data.minMinutes = minMinutes;
   if (status !== undefined) data.status = status;
 
   try {
@@ -118,11 +116,11 @@ export async function PATCH(req: Request, { params }: RouteContext) {
         where: {
           id: current.id,
           // Keep the validated status and timing values consistent with concurrent edits.
-          ...(editsSchedule || status === "PUBLISHED" ? { status: current.status, startsAt: current.startsAt, endsAt: current.endsAt, minMinutes: current.minMinutes } : {}),
+          ...(editsSchedule || status === "PUBLISHED" ? { status: current.status, startsAt: current.startsAt, endsAt: current.endsAt } : {}),
         },
         data,
       });
-      if (minMinutes !== undefined || status !== undefined) {
+      if (status !== undefined) {
         await recalculateActivityAttendance(tx, current.id, BigInt(user.id));
       }
       await tx.auditLog.create({ data: {
@@ -132,7 +130,6 @@ export async function PATCH(req: Request, { params }: RouteContext) {
           ...(editsSchedule ? {
             previousStartsAt: current.startsAt.toISOString(), previousEndsAt: current.endsAt.toISOString(),
             startsAt: activity.startsAt.toISOString(), endsAt: activity.endsAt.toISOString(),
-            previousMinMinutes: current.minMinutes, minMinutes: activity.minMinutes,
           } : {}),
         },
       } });

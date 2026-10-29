@@ -17,8 +17,7 @@ export function isIncompleteCompletedParticipation(participation: {
   attendanceRecords: { eventType: AttendanceEvent }[];
 }): boolean {
   return participation.activity.status === "COMPLETED" &&
-    participation.attendanceRecords.some((record) => record.eventType === "CHECK_IN") &&
-    !participation.attendanceRecords.some((record) => record.eventType === "CHECK_OUT");
+    !participation.attendanceRecords.some((record) => record.eventType === "CHECK_IN");
 }
 
 export function selectStudentYear(years: StudentYearOption[], requestedId?: string) {
@@ -61,10 +60,7 @@ export function studentActivityWhere(
       participations: {
         some: {
           userId: BigInt(userId),
-          AND: [
-            { attendanceRecords: { some: { eventType: "CHECK_IN" } } },
-            { attendanceRecords: { some: { eventType: "CHECK_OUT" } } },
-          ],
+          attendanceRecords: { some: { eventType: "CHECK_IN" } },
         },
       },
     };

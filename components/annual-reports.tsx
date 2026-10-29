@@ -139,9 +139,9 @@ export function AnnualReports({ years, initialYearId }: { years: StudentYearOpti
               ["กิจกรรมทั้งหมด", preview.summary.activities, "กิจกรรม"],
               ["ลงทะเบียนทั้งหมด", preview.summary.registrations, "คนครั้ง"],
               ["ผู้เช็คอินไม่ซ้ำ", preview.summary.uniqueAttendees, "คน"],
-              ["บันทึกเวลาเข้า–ออกครบ", preview.summary.completedCount, "คนครั้ง"],
-              ["ผ่านเกณฑ์เวลา", preview.summary.qualifiedCount, "คนครั้ง"],
-              ["เวลาเข้าร่วมจริงรวม", preview.summary.minutes, "นาที"],
+              ["บันทึกเวลาเข้า–ออกเดิม", preview.summary.completedCount, "คนครั้ง"],
+              ["เช็คอินผ่านประเมิน", preview.summary.qualifiedCount, "คนครั้ง"],
+              ["เวลาจากบันทึกเดิมรวม", preview.summary.minutes, "นาที"],
               ["ดาวเพิ่มที่อนุมัติทั้งหมด", preview.summary.earned, "ดาว"],
               ["ยอดดาวตามบัญชีประวัติ", preview.summary.balance, "ดาว"],
             ].map(([label, value, unit]) => <Card key={String(label)}><CardContent className="space-y-2 p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="text-2xl font-semibold tabular-nums">{Number(value).toLocaleString("th-TH")} <span className="text-xs font-normal text-muted-foreground">{unit}</span></p></CardContent></Card>)}

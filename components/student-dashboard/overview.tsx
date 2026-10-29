@@ -57,11 +57,10 @@ async function StudentDashboardContent({ searchParams, target }: StudentYearPage
   const currentParticipations = participations.filter((participation) =>
     participation.activity.status === "PUBLISHED" &&
     participation.attendanceRecords.some((record) => record.eventType === "CHECK_IN" && record.occurredAt <= now) &&
-    !participation.attendanceRecords.some((record) => record.eventType === "CHECK_OUT"),
+    participation.eligibilityStatus === "PENDING",
   );
   const attendedCount = participations.filter((participation) =>
-    participation.attendanceRecords.some((record) => record.eventType === "CHECK_IN") &&
-    participation.attendanceRecords.some((record) => record.eventType === "CHECK_OUT"),
+    participation.attendanceRecords.some((record) => record.eventType === "CHECK_IN"),
   ).length;
   const yellowStars = yellowStarTotal._sum.points ?? 0;
   const greenStars = greenStarTotal._sum.points ?? 0;
@@ -121,7 +120,7 @@ async function StudentDashboardContent({ searchParams, target }: StudentYearPage
         <nav aria-label="ทางลัดของฉัน" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {[
             { href: `/dashboard/activities${yearQuery}`, title: "หากิจกรรมที่ชอบ", hint: "เปิดประสบการณ์ เก็บดาวเพิ่ม", icon: Sparkles, color: "bg-primary/10 text-primary" },
-            ...(canScan ? [{ href: `/scan${yearQuery}`, title: "สแกน QR", hint: "เช็คอินหรือเช็คเอาท์กิจกรรม", icon: QrCode, color: "bg-amber-500/10 text-amber-700 dark:text-amber-400" }] : []),
+            ...(canScan ? [{ href: `/scan${yearQuery}`, title: "สแกน QR", hint: "เช็คอินกิจกรรม", icon: QrCode, color: "bg-amber-500/10 text-amber-700 dark:text-amber-400" }] : []),
             { href: `${basePath}/my-activities${yearQuery}`, title: "กิจกรรมของฉัน", hint: "ดูการเข้าร่วมและการช่วยงาน", icon: Calendar, color: "bg-sky-500/10 text-sky-700 dark:text-sky-400" },
           ].map(({ href, title, hint, icon: Icon, color }) => (
             <Link key={href} href={href} className="group flex min-w-0 items-center gap-3 rounded-2xl border border-transparent bg-card px-4 py-4 transition-colors hover:border-primary/20 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -135,8 +134,8 @@ async function StudentDashboardContent({ searchParams, target }: StudentYearPage
 
       {currentParticipations.length > 0 && (
         <section aria-labelledby="current-activities-title" className="rounded-2xl border border-primary/20 bg-card p-5 sm:p-6">
-          <h2 id="current-activities-title" className="flex items-center gap-2 font-semibold"><QrCode className="size-5 text-primary" aria-hidden="true" />{!canScan ? "ประวัติกิจกรรมที่ยังไม่มีเช็คเอาท์" : readOnly ? "กิจกรรมที่กำลังเข้าร่วม" : "อย่าลืมเช็คเอาท์ก่อนกลับ"}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">เช็คอินแล้ว {currentParticipations.length} กิจกรรม{canScan ? " · บันทึกเวลาออกให้ครบเพื่อรับดาว" : " · ปีการศึกษานี้ไม่เปิดให้บันทึกเวลา"}</p>
+          <h2 id="current-activities-title" className="flex items-center gap-2 font-semibold"><QrCode className="size-5 text-primary" aria-hidden="true" />{!canScan ? "ประวัติกิจกรรมที่รอประเมินดาว" : readOnly ? "กิจกรรมที่กำลังเข้าร่วม" : "เช็คอินแล้ว รอรับดาวสีเหลือง"}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">เช็คอินแล้ว {currentParticipations.length} กิจกรรม{canScan ? " · รับดาวอัตโนมัติหลัง QR หมดอายุ" : " · ปีการศึกษานี้ไม่เปิดให้บันทึกเวลา"}</p>
           <div className="mt-4 divide-y">
             {currentParticipations.map((participation) => {
               const checkIn = participation.attendanceRecords.find((record) => record.eventType === "CHECK_IN");
@@ -150,7 +149,6 @@ async function StudentDashboardContent({ searchParams, target }: StudentYearPage
                     </div>
                     <p className="text-xs text-muted-foreground">สิ้นสุด {formatThaiDateTime(participation.activity.endsAt.toISOString())}</p>
                   </div>
-                  {!readOnly && canScan && <Button size="sm" nativeButton={false} render={<Link href={`/scan${yearQuery}`} />} className="shrink-0 rounded-full"><QrCode />สแกนเช็คเอาท์</Button>}
                 </div>
               );
             })}
@@ -161,7 +159,7 @@ async function StudentDashboardContent({ searchParams, target }: StudentYearPage
       {incompleteParticipations.length > 0 && (
         <section aria-labelledby="incomplete-activities-title" className="rounded-2xl border border-amber-500/25 bg-amber-500/5 p-5">
           <h2 id="incomplete-activities-title" className="flex items-center gap-2 text-sm font-semibold"><TriangleAlert className="size-5 shrink-0 text-amber-600" aria-hidden="true" />มี {incompleteParticipations.length} กิจกรรมที่บันทึกเวลาไม่ครบ</h2>
-          <p className="mt-2 text-sm text-muted-foreground">กิจกรรมสิ้นสุดแล้ว แต่ยังไม่มีเวลาเช็คเอาท์ กรุณาติดต่อผู้จัดเพื่อตรวจสอบ รายการนี้ยังไม่นับเป็นเข้า–ออกครบหรือผ่านเกณฑ์รับดาว</p>
+          <p className="mt-2 text-sm text-muted-foreground">กิจกรรมสิ้นสุดแล้ว แต่ยังไม่มีบันทึกเช็คอิน กรุณาติดต่อผู้จัดเพื่อตรวจสอบ</p>
           <ul className="mt-3 space-y-2">{incompleteParticipations.map((participation) => <li key={String(participation.id)} className="break-words text-sm font-medium">{participation.activity.title}</li>)}</ul>
         </section>
       )}
@@ -174,9 +172,9 @@ async function StudentDashboardContent({ searchParams, target }: StudentYearPage
           <Link href={`${basePath}/my-activities${yearQuery}`} className="inline-flex items-center gap-1 rounded-md py-1 text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">ดูประวัติ<ArrowRight className="size-4" aria-hidden="true" /></Link>
         </div>
         <dl className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-4">
-          <div><dt className="text-xs text-muted-foreground">เข้าร่วมเข้า–ออกครบ</dt><dd className="mt-1 text-lg font-semibold">{attendedCount}<span className="ml-1 text-xs font-normal text-muted-foreground">กิจกรรม</span></dd></div>
+          <div><dt className="text-xs text-muted-foreground">เข้าร่วมกิจกรรม</dt><dd className="mt-1 text-lg font-semibold">{attendedCount}<span className="ml-1 text-xs font-normal text-muted-foreground">กิจกรรม</span></dd></div>
           <div><dt className="text-xs text-muted-foreground">ช่วยงานสำเร็จ</dt><dd className="mt-1 text-lg font-semibold">{helperDutiesTotal + standaloneWorkTotal}<span className="ml-1 text-xs font-normal text-muted-foreground">งาน</span></dd></div>
-          <div><dt className="flex items-center gap-1 text-xs text-muted-foreground"><Clock className="size-3.5" aria-hidden="true" />เวลาเข้าร่วมรวม</dt><dd className="mt-1 text-lg font-semibold">{totalAttendanceMinutes(participations)}<span className="ml-1 text-xs font-normal text-muted-foreground">นาที</span></dd></div>
+          {/* <div><dt className="flex items-center gap-1 text-xs text-muted-foreground"><Clock className="size-3.5" aria-hidden="true" />เวลาเข้าร่วมรวม</dt><dd className="mt-1 text-lg font-semibold">{totalAttendanceMinutes(participations)}<span className="ml-1 text-xs font-normal text-muted-foreground">นาที</span></dd></div> */}
           <div><dt className="text-xs text-muted-foreground">ดาวที่ได้รับแต่ละสี</dt><dd className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm font-medium"><span className="flex items-center gap-1"><Star className="size-4 fill-amber-300 text-amber-600" aria-hidden="true" />เหลือง {yellowStars}</span><span className="flex items-center gap-1"><Star className="size-4 fill-emerald-300 text-emerald-600" aria-hidden="true" />เขียว {greenStars}</span></dd></div>
         </dl>
         <p className="text-xs text-muted-foreground">ดาวสีเหลืองจากการเข้าร่วมสูงสุด 12 ดาวต่อปี · ดาวสีเขียวจากการช่วยงาน</p>

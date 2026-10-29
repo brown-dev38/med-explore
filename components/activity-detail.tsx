@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { notifyActivityUpdate } from "@/lib/activity-live";
 import { toast } from "sonner";
 import {
@@ -14,22 +14,15 @@ import {
   CheckCircle2,
   XCircle,
   Copy,
-  Pencil,
   Star,
-  Calculator,
-  AlertCircle,
-  Timer,
+  FileSpreadsheet,
 } from "lucide-react";
-import { attendanceMinutesFromRecords } from "@/lib/attendance-calculation";
 import type {
   ActivityDto,
   ActivityStatus,
-  AttendanceEvent,
   ParticipationDto,
-  QrPurpose,
-  QrSessionDto,
 } from "@/types/activity";
-import { formatThaiDateTime, localInputToIso, toLocalInputValue } from "@/lib/datetime";
+import { formatThaiDateTime, localInputToIso } from "@/lib/datetime";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -62,6 +55,8 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ActivityScheduleEditor } from "@/components/activity-schedule-editor";
 import { ActivityPublishButton } from "@/components/activity-publish-button";
 import { ActivityQrDisplay } from "@/components/activity-qr-display";
+import { useActivityQr } from "@/components/use-activity-qr";
+import { StudentExcelImport } from "@/components/green-star-excel-import";
 import { useLiveActivityData } from "@/components/use-live-activity-data";
 
 const STATUS_CONFIG: Record<
@@ -81,6 +76,8 @@ type Candidate = {
   email: string;
 };
 
+const PARTICIPANTS_PER_PAGE = 10;
+
 function formatRemaining(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
@@ -96,14 +93,27 @@ export function ActivityDetail({
 }) {
   const [status, setStatus] = useState<ActivityStatus>(activity.status);
   const { data: rows, refresh: refreshParticipants, failed: participantsRefreshFailed } = useLiveActivityData(`/api/activities/${activity.id}/participations`, participants, 5000);
-  const [purpose, setPurpose] = useState<QrPurpose>("CHECK_IN");
+  const [participantPage, setParticipantPage] = useState(1);
+  const [participantSearch, setParticipantSearch] = useState("");
+  const participantSearchTerm = participantSearch.trim().toLocaleLowerCase();
+  const filteredParticipants = useMemo(() => rows.filter((row) =>
+    row.userName.toLocaleLowerCase().includes(participantSearchTerm)
+    || (row.studentCode ?? "").toLocaleLowerCase().includes(participantSearchTerm)
+  ), [rows, participantSearchTerm]);
+  const participantTotalPages = Math.max(1, Math.ceil(filteredParticipants.length / PARTICIPANTS_PER_PAGE));
+  const currentParticipantPage = Math.min(participantPage, participantTotalPages);
+  const participantOffset = (currentParticipantPage - 1) * PARTICIPANTS_PER_PAGE;
+  const visibleParticipants = filteredParticipants.slice(participantOffset, participantOffset + PARTICIPANTS_PER_PAGE);
+  const purpose = "CHECK_IN";
   const [ttl, setTtl] = useState("15");
-  const [qr, setQr] = useState<QrSessionDto | null>(null);
-  const [remaining, setRemaining] = useState(0);
+  const { qr, setQr, remaining, restoring: restoringQr, error: qrRestoreError, notice: qrNotice, retryRestore } = useActivityQr(activity.id);
   const [busy, setBusy] = useState(false);
 
   // Modal Dialogs for Participants
   const [candidatesOpen, setCandidatesOpen] = useState(false);
+  const [participantImportOpen, setParticipantImportOpen] = useState(false);
+  const participantRequest = useRef<{ payload: string; id: string } | null>(null);
+  const addingParticipants = useRef(false);
   const [bulkTimeOpen, setBulkTimeOpen] = useState(false);
   const [candidateQuery, setCandidateQuery] = useState("");
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -112,17 +122,7 @@ export function ActivityDetail({
 
   // Bulk Attendance
   const [bulkIn, setBulkIn] = useState("");
-  const [bulkOut, setBulkOut] = useState("");
   const [bulkSaving, setBulkSaving] = useState(false);
-
-  // Single Attendance Editor
-  const [editingTime, setEditingTime] = useState<{
-    participationId: string;
-    userName: string;
-    eventType: AttendanceEvent;
-    value: string;
-  } | null>(null);
-  const [savingTime, setSavingTime] = useState(false);
 
   // Confirm Dialog
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -134,24 +134,6 @@ export function ActivityDetail({
     action: async () => {},
   });
 
-  useEffect(() => {
-    if (!qr) return;
-
-    const target = new Date(qr.expiresAt).getTime();
-    const id = setInterval(() => {
-      const seconds = Math.max(0, Math.round((target - Date.now()) / 1000));
-      setRemaining(seconds);
-      if (seconds <= 0) {
-        setQr(null);
-        toast.info("QR Code หมดอายุแล้ว");
-      }
-    }, 1000);
-
-    return () => clearInterval(id);
-  }, [qr]);
-
-  const [recalculating, setRecalculating] = useState(false);
-
   // สรุปสถิติเวลาผู้เข้าร่วม
   const attendanceStats = useMemo(() => {
     let checkedInCount = 0;
@@ -160,14 +142,9 @@ export function ActivityDetail({
 
     for (const r of rows) {
       const hasIn = r.attendance.some((a) => a.eventType === "CHECK_IN");
-      const hasOut = r.attendance.some((a) => a.eventType === "CHECK_OUT");
       if (hasIn) checkedInCount++;
-      if (hasIn && hasOut) completedCount++;
-
-      const minutes = r.attendedMinutes ?? attendanceMinutesFromRecords(r.attendance);
-      if (minutes !== null && minutes >= activity.minMinutes) {
-        qualifiedCount++;
-      }
+      if (r.eligibilityStatus === "APPROVED") completedCount++;
+      if (r.yellowStarPoints > 0) qualifiedCount++;
     }
 
     return {
@@ -176,35 +153,13 @@ export function ActivityDetail({
       completed: completedCount,
       qualified: qualifiedCount,
     };
-  }, [rows, activity.minMinutes]);
+  }, [rows]);
 
   async function reloadParticipants(silent = false) {
     const ok = await refreshParticipants();
     if (!silent) {
       if (ok) toast.success("อัปเดตข้อมูลผู้เข้าร่วมล่าสุดแล้ว");
       else toast.warning("โหลดข้อมูลล่าสุดไม่สำเร็จ ระบบจะลองใหม่อัตโนมัติ");
-    }
-  }
-
-  async function handleRecalculateAttendance() {
-    setRecalculating(true);
-    try {
-      const res = await fetch(
-        `/api/activities/${activity.id}/attendance/recalculate`,
-        { method: "POST" },
-      );
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(json.message || json.error || "คำนวณเวลาและดาวไม่สำเร็จ");
-        return;
-      }
-      toast.success("ตรวจสอบเวลาและคำนวณดาวของผู้เข้าร่วมทุกคนเรียบร้อยแล้ว");
-      await reloadParticipants(true);
-      notifyActivityUpdate();
-    } catch {
-      toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
-    } finally {
-      setRecalculating(false);
     }
   }
 
@@ -248,6 +203,7 @@ export function ActivityDetail({
   }
 
   async function generateQr() {
+    if (busy || restoringQr || qrRestoreError) return;
     setBusy(true);
     try {
       const res = await fetch("/api/qr-sessions", {
@@ -265,14 +221,6 @@ export function ActivityDetail({
         return;
       }
       setQr(json.data);
-      setRemaining(
-        Math.max(
-          0,
-          Math.round(
-            (new Date(json.data.expiresAt).getTime() - Date.now()) / 1000,
-          ),
-        ),
-      );
       toast.success(
         `สร้าง QR ${purpose === "CHECK_IN" ? "เช็คอิน" : "เช็คเอาท์"} สำเร็จ`,
       );
@@ -294,7 +242,12 @@ export function ActivityDetail({
       action: async () => {
         setBusy(true);
         try {
-          await fetch(`/api/qr-sessions/${qr.id}`, { method: "DELETE" });
+          const response = await fetch(`/api/qr-sessions/${qr.id}`, { method: "DELETE" });
+          if (!response.ok) {
+            const json = await response.json().catch(() => ({}));
+            toast.error(json.message ?? "ปิด QR Code ไม่สำเร็จ");
+            return;
+          }
           setQr(null);
           toast.success("ปิด QR Code เรียบร้อยแล้ว");
         } catch {
@@ -337,30 +290,39 @@ export function ActivityDetail({
   }
 
   function toggleCandidate(id: string) {
+    if (busy || searchingCandidates) return;
     setSelectedCandidates((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id],
+      prev.includes(id) ? prev.filter((i) => i !== id) : prev.length < 500 ? [...prev, id] : prev,
     );
   }
 
   function selectAllCandidates() {
-    setSelectedCandidates(candidates.map((c) => c.id));
+    const displayedIds = new Set(candidates.map((candidate) => candidate.id));
+    setSelectedCandidates((selected) => candidates.every((candidate) => selected.includes(candidate.id))
+      ? selected.filter((id) => !displayedIds.has(id))
+      : [...new Set([...selected, ...displayedIds])].slice(0, 500));
   }
 
   async function handleAddSelectedCandidates() {
-    if (selectedCandidates.length === 0) return;
+    if (selectedCandidates.length === 0 || addingParticipants.current) return;
+    addingParticipants.current = true;
     setBusy(true);
     try {
+      const userIds = [...selectedCandidates].sort();
+      const payload = JSON.stringify({ activityId: activity.id, userIds });
+      if (participantRequest.current?.payload !== payload) participantRequest.current = { payload, id: crypto.randomUUID() };
       const res = await fetch(`/api/activities/${activity.id}/participants`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userIds: selectedCandidates }),
+        body: JSON.stringify({ userIds, requestId: participantRequest.current.id }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error(json.message ?? "เพิ่มผู้ลงทะเบียนไม่สำเร็จ");
         return;
       }
-      toast.success(`เพิ่มผู้เข้าร่วมสำเร็จ ${json.data.added} คน`);
+      toast.success(`เพิ่มผู้เข้าร่วม ${json.data.added} คน และให้ดาวสีเหลือง ${json.data.awarded} คนแล้ว${json.data.awarded < json.data.added ? " (บางรายได้รับดาวครบเพดานรายปีแล้ว)" : ""}`);
+      participantRequest.current = null;
       setSelectedCandidates([]);
       setCandidatesOpen(false);
       await reloadParticipants();
@@ -368,22 +330,21 @@ export function ActivityDetail({
     } catch {
       toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
     } finally {
+      addingParticipants.current = false;
       setBusy(false);
     }
   }
 
   function promptBulkSaveTimes() {
-    if (!bulkIn && !bulkOut) {
-      toast.error("กรุณาระบุเวลาเช็คอินหรือเช็คเอาท์อย่างน้อยหนึ่งช่อง");
+    if (!bulkIn) {
+      toast.error("กรุณาระบุเวลาเช็คอิน");
       return;
     }
     setConfirmConfig({
       title: `ยืนยันบันทึกเวลาให้ทุกคน (${rows.length} คน)`,
       description: `คุณกำลังจะบันทึกเวลาให้กับผู้ลงทะเบียนทุกคนพร้อมกัน${
         bulkIn ? `\n• เวลาเช็คอิน: ${bulkIn.replace("T", " ")}` : ""
-      }${
-        bulkOut ? `\n• เวลาเช็คเอาท์: ${bulkOut.replace("T", " ")}` : ""
-      }\n(หมายเหตุ: เช็คเอาท์จะบันทึกให้เฉพาะคนที่มีเช็คอินแล้วเท่านั้น)`,
+      }\nให้ดาวสีเหลืองอัตโนมัติหลัง QR หมดอายุ ไม่ต้องเช็คเอาท์`,
       confirmText: "บันทึกเวลาให้ทุกคน",
       variant: "default",
       action: async () => {
@@ -396,7 +357,6 @@ export function ActivityDetail({
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 ...(bulkIn ? { checkInAt: localInputToIso(bulkIn) } : {}),
-                ...(bulkOut ? { checkOutAt: localInputToIso(bulkOut) } : {}),
               }),
             },
           );
@@ -417,57 +377,6 @@ export function ActivityDetail({
       },
     });
     setConfirmOpen(true);
-  }
-
-  function openTimeEditor(
-    participation: ParticipationDto,
-    eventType: AttendanceEvent,
-  ) {
-    const existing = participation.attendance.find(
-      (record) => record.eventType === eventType,
-    );
-    setEditingTime({
-      participationId: participation.id,
-      userName: participation.userName,
-      eventType,
-      value: toLocalInputValue(
-        existing ? existing.occurredAt : new Date().toISOString(),
-      ),
-    });
-  }
-
-  async function saveSingleTime(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!editingTime) return;
-    setSavingTime(true);
-    try {
-      const res = await fetch("/api/attendance/manual", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          participationId: editingTime.participationId,
-          eventType: editingTime.eventType,
-          occurredAt: localInputToIso(editingTime.value),
-        }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(json.message ?? "บันทึกเวลาไม่สำเร็จ");
-        return;
-      }
-      toast.success(
-        `บันทึกเวลา${
-          editingTime.eventType === "CHECK_IN" ? "เช็คอิน" : "เช็คเอาท์"
-        }ให้ ${editingTime.userName} สำเร็จ`,
-      );
-      setEditingTime(null);
-      await reloadParticipants();
-      notifyActivityUpdate();
-    } catch {
-      toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
-    } finally {
-      setSavingTime(false);
-    }
   }
 
   const copyQrLink = () => {
@@ -494,7 +403,7 @@ export function ActivityDetail({
                   {STATUS_CONFIG[status].label}
                 </Badge>
                 <span className="text-xs text-muted-foreground">
-                  เกณฑ์ขั้นต่ำ: {activity.minMinutes} นาที
+                  เช็คอินแล้วรับดาวหลัง QR หมดอายุ
                 </span>
               </div>
               <CardTitle className="text-2xl font-bold tracking-tight text-foreground">
@@ -584,7 +493,7 @@ export function ActivityDetail({
           <div className="flex items-center gap-2">
             <QrCode className="h-5 w-5 text-primary" />
             <CardTitle className="text-lg font-semibold">
-              QR Check-in / Check-out
+              QR Check-in
             </CardTitle>
           </div>
           <CardDescription className="text-xs">
@@ -594,21 +503,6 @@ export function ActivityDetail({
         </CardHeader>
         <CardContent className="p-6 pt-2">
           <div className="flex flex-wrap items-end gap-3 pb-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="qr-purpose" className="text-xs">
-                ประเภทการสแกน
-              </Label>
-              <select
-                id="qr-purpose"
-                value={purpose}
-                onChange={(e) => setPurpose(e.target.value as QrPurpose)}
-                disabled={busy}
-                className="w-48 rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="CHECK_IN">เช็คอิน (Check-in)</option>
-                <option value="CHECK_OUT">เช็คเอาท์ (Check-out)</option>
-              </select>
-            </div>
             <div className="space-y-1.5">
               <Label htmlFor="qr-ttl" className="text-xs">
                 อายุรหัส (นาที)
@@ -623,12 +517,15 @@ export function ActivityDetail({
                 className="w-28"
               />
             </div>
-            <Button onClick={generateQr} disabled={busy} className="gap-2">
+            <Button onClick={generateQr} disabled={busy || restoringQr || Boolean(qrRestoreError)} className="gap-2">
               <QrCode className="h-4 w-4" />
               สร้าง QR Code
             </Button>
           </div>
 
+          {restoringQr && <p role="status" className="mt-3 text-sm text-muted-foreground">กำลังตรวจสอบ QR เดิม...</p>}
+          {qrRestoreError && <div className="mt-3 space-y-2"><p role="alert" className="text-sm text-destructive">{qrRestoreError}</p><Button variant="outline" size="sm" onClick={retryRestore}>ลองเรียก QR เดิมอีกครั้ง</Button></div>}
+          {qrNotice && <p role="status" className="mt-3 text-sm text-muted-foreground">{qrNotice}</p>}
           {qr && (
             <div className="mt-6 flex flex-col items-center gap-6 rounded-xl border border-border bg-muted/30 p-6 sm:flex-row sm:items-start">
               <ActivityQrDisplay key={qr.id} qr={qr} activityTitle={activity.title} remaining={remaining} />
@@ -731,7 +628,7 @@ export function ActivityDetail({
             <Card className="p-3.5 bg-muted/30">
               <p className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
                 <Clock className="h-3.5 w-3.5 text-indigo-600" />
-                เช็คเอาท์ครบ
+                ประเมินหลัง QR หมดอายุแล้ว
               </p>
               <p className="mt-1 text-xl font-bold text-foreground">
                 {attendanceStats.completed} <span className="text-xs font-normal text-muted-foreground">คน</span>
@@ -740,10 +637,10 @@ export function ActivityDetail({
             <Card className="p-3.5 bg-muted/30">
               <p className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
                 <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
-                ผ่านเกณฑ์เวลา
+                ได้รับดาวสีเหลืองแล้ว
               </p>
               <p className="mt-1 text-xl font-bold text-emerald-600 dark:text-emerald-400">
-                {attendanceStats.qualified} <span className="text-xs font-normal text-muted-foreground">คน (≥{activity.minMinutes}น.)</span>
+                {attendanceStats.qualified} <span className="text-xs font-normal text-muted-foreground">คน</span>
               </p>
             </Card>
           </div>
@@ -758,7 +655,7 @@ export function ActivityDetail({
                       ตารางสรุปเวลาผู้เข้าร่วม ({rows.length} คน)
                     </CardTitle>
                     <CardDescription className="text-xs">
-                      เกณฑ์เวลาสะสมดาวสีเหลืองขั้นต่ำ {activity.minMinutes} นาที
+                      เช็คอินอย่างเดียว รับ 1 ดาวสีเหลืองอัตโนมัติหลัง QR หมดอายุ ไม่กำหนดนาทีขั้นต่ำ
                       <span className="mt-1 block" role="status">
                         {participantsRefreshFailed ? "เชื่อมต่อข้อมูลล่าสุดไม่ได้ กำลังลองใหม่อัตโนมัติ" : "อัปเดตรายชื่อและเวลาอัตโนมัติทุก 5 วินาที"}
                       </span>
@@ -766,16 +663,18 @@ export function ActivityDetail({
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setParticipantImportOpen(true)} disabled={busy || (status !== "PUBLISHED" && status !== "COMPLETED")} className="gap-1.5"><FileSpreadsheet className="h-3.5 w-3.5" />นำเข้า Excel</Button>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={openCandidateModal}
+                    disabled={busy || (status !== "PUBLISHED" && status !== "COMPLETED")}
                     className="gap-1.5"
                   >
                     <UserPlus className="h-3.5 w-3.5" />
                     เพิ่มผู้เข้าร่วม
                   </Button>
-                  <Button
+                  {/* <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setBulkTimeOpen(true)}
@@ -783,17 +682,7 @@ export function ActivityDetail({
                   >
                     <Clock className="h-3.5 w-3.5" />
                     ตั้งเวลาให้ทุกคน
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleRecalculateAttendance}
-                    disabled={recalculating}
-                    className="gap-1.5"
-                  >
-                    <Calculator className="h-3.5 w-3.5" />
-                    {recalculating ? "กำลังคำนวณ..." : "คำนวณเวลา/ดาว"}
-                  </Button>
+                  </Button> */}
                   <Button
                     variant="ghost"
                     size="sm"
@@ -807,39 +696,43 @@ export function ActivityDetail({
               </div>
             </CardHeader>
             <CardContent className="p-0 pt-2">
+              <div className="space-y-2 px-6 pb-4">
+                <Label htmlFor="participant-name-search">ค้นหาชื่อหรือรหัสนิสิต</Label>
+                <Input
+                  id="participant-name-search"
+                  type="search"
+                  placeholder="พิมพ์ชื่อ นามสกุล หรือรหัสนิสิต"
+                  value={participantSearch}
+                  onChange={(event) => { setParticipantSearch(event.target.value); setParticipantPage(1); }}
+                  className="sm:max-w-sm"
+                />
+              </div>
+              <div className="h-[720px] [&>[data-slot=table-container]]:h-full [&>[data-slot=table-container]]:overflow-auto [&>[data-slot=table-container]]:[scrollbar-gutter:stable]">
               <Table>
-                <TableHeader>
+                <TableHeader className="sticky top-0 z-10 bg-background">
                   <TableRow>
                     <TableHead>ชื่อ-นามสกุล</TableHead>
                     <TableHead>รหัสนิสิต</TableHead>
                     <TableHead>เวลาเช็คอิน</TableHead>
-                    <TableHead>เวลาเช็คเอาท์</TableHead>
-                    <TableHead>เวลาเข้าร่วมจริง</TableHead>
+                    <TableHead>ผลการเช็คอิน</TableHead>
                     <TableHead>ดาวสีเหลือง</TableHead>
-                    <TableHead className="text-right">จัดการเวลา</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {rows.length === 0 && (
+                  {filteredParticipants.length === 0 && (
                     <TableRow>
                       <TableCell
-                        colSpan={7}
+                        colSpan={5}
                         className="h-28 text-center text-muted-foreground"
                       >
-                        ยังไม่มีผู้ลงทะเบียนกิจกรรมนี้
+                        {rows.length === 0 ? "ยังไม่มีผู้ลงทะเบียนกิจกรรมนี้" : "ไม่พบผู้เข้าร่วมที่ตรงกับคำค้นหา"}
                       </TableCell>
                     </TableRow>
                   )}
-                  {rows.map((row) => {
+                  {visibleParticipants.map((row) => {
                     const checkIn = row.attendance.find(
                       (r) => r.eventType === "CHECK_IN",
                     );
-                    const checkOut = row.attendance.find(
-                      (r) => r.eventType === "CHECK_OUT",
-                    );
-                    const attendedMinutes =
-                      row.attendedMinutes ??
-                      attendanceMinutesFromRecords(row.attendance);
                     return (
                       <TableRow key={row.id}>
                         <TableCell className="font-semibold text-foreground">
@@ -861,61 +754,7 @@ export function ActivityDetail({
                             <span className="text-xs text-muted-foreground">&mdash;</span>
                           )}
                         </TableCell>
-                        <TableCell>
-                          {checkOut ? (
-                            <div className="flex items-center gap-1.5 text-xs text-foreground">
-                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                              <span>{formatThaiDateTime(checkOut.occurredAt)}</span>
-                              <Badge variant="outline" className="text-[10px] py-0 px-1.5">
-                                {checkOut.method === "QR" ? "QR" : "ผู้จัด"}
-                              </Badge>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">&mdash;</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {attendedMinutes !== null ? (
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                                <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                                <span className="font-semibold">{attendedMinutes}</span> นาที
-                              </div>
-                              {attendedMinutes >= activity.minMinutes ? (
-                                <Badge
-                                  variant="default"
-                                  className="bg-emerald-600 hover:bg-emerald-700 text-[10px] gap-1 px-1.5 py-0"
-                                >
-                                  <CheckCircle2 className="h-2.5 w-2.5" />
-                                  ผ่านเกณฑ์ ({activity.minMinutes} น.)
-                                </Badge>
-                              ) : (
-                                <Badge
-                                  variant="outline"
-                                  className="text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-800 text-[10px] gap-1 px-1.5 py-0"
-                                >
-                                  <AlertCircle className="h-2.5 w-2.5" />
-                                  ขาด {activity.minMinutes - attendedMinutes} นาที
-                                </Badge>
-                              )}
-                            </div>
-                          ) : checkIn && !checkOut ? (
-                            <div className="space-y-1">
-                              <span className="text-xs text-muted-foreground">—</span>
-                              <div>
-                                <Badge
-                                  variant="secondary"
-                                  className="text-[10px] text-muted-foreground gap-1 px-1.5 py-0"
-                                >
-                                  <Timer className="h-2.5 w-2.5" />
-                                  รอเช็คเอาท์
-                                </Badge>
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
+                        <TableCell><span className="text-xs text-muted-foreground">{row.reviewNote ?? (checkIn ? "เช็คอินแล้ว รอ QR หมดอายุ" : "ยังไม่เช็คอิน")}</span></TableCell>
                         <TableCell>
                           {row.yellowStarPoints > 0 ? (
                             <div className="space-y-1">
@@ -949,33 +788,27 @@ export function ActivityDetail({
                             <span className="text-xs text-muted-foreground">—</span>
                           )}
                         </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex flex-wrap justify-end gap-1.5">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openTimeEditor(row, "CHECK_IN")}
-                              disabled={busy}
-                            >
-                              <Pencil className="mr-1 h-3 w-3" />
-                              {checkIn ? "แก้เช็คอิน" : "บันทึกเช็คอิน"}
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openTimeEditor(row, "CHECK_OUT")}
-                              disabled={busy}
-                            >
-                              <Pencil className="mr-1 h-3 w-3" />
-                              {checkOut ? "แก้เช็คเอาท์" : "บันทึกเช็คเอาท์"}
-                            </Button>
-                          </div>
-                        </TableCell>
                       </TableRow>
                     );
                   })}
                 </TableBody>
               </Table>
+              </div>
+              <div className="flex flex-col gap-3 border-t p-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-muted-foreground" aria-live="polite">
+                  แสดง {filteredParticipants.length ? participantOffset + 1 : 0}–{participantOffset + visibleParticipants.length} จาก {filteredParticipants.length} ราย (หน้าละ {PARTICIPANTS_PER_PAGE} ราย)
+                  {participantSearchTerm && ` จากผู้เข้าร่วมทั้งหมด ${rows.length} ราย`}
+                </p>
+                <nav aria-label="หน้ารายชื่อผู้เข้าร่วม" className="flex items-center gap-3">
+                  <Button variant="outline" size="sm" disabled={currentParticipantPage === 1} onClick={() => setParticipantPage(currentParticipantPage - 1)}>
+                    ก่อนหน้า
+                  </Button>
+                  <span className="text-sm text-muted-foreground">หน้า {currentParticipantPage} / {participantTotalPages}</span>
+                  <Button variant="outline" size="sm" disabled={currentParticipantPage === participantTotalPages} onClick={() => setParticipantPage(currentParticipantPage + 1)}>
+                    ถัดไป
+                  </Button>
+                </nav>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -987,7 +820,7 @@ export function ActivityDetail({
           <DialogHeader>
             <DialogTitle>เพิ่มผู้เข้าร่วมกิจกรรม</DialogTitle>
             <DialogDescription>
-              ค้นหาและเลือกรายชื่อผู้ใช้ที่ยังไม่ได้ลงทะเบียนกิจกรรมนี้
+              เลือกเฉพาะนิสิตที่ยังไม่ได้ลงทะเบียน ระบบบันทึกเช็คอินและให้ดาวสีเหลืองทันทีตามเพดาน 12 ดาวต่อปี
             </DialogDescription>
           </DialogHeader>
 
@@ -1015,16 +848,16 @@ export function ActivityDetail({
 
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>
-                พบ {candidates.length} คน (เลือกแล้ว {selectedCandidates.length}{" "}
-                คน)
+                พบ {candidates.length} คน (เลือกแล้ว {selectedCandidates.length}/500 คน)
               </span>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={selectAllCandidates}
+                  disabled={busy || searchingCandidates || !candidates.length}
                   className="hover:underline text-primary"
                 >
-                  เลือกทั้งหมด
+                  {candidates.length > 0 && candidates.every((candidate) => selectedCandidates.includes(candidate.id)) ? "ยกเลิกเลือกทั้งหมดที่แสดง" : "เลือกทั้งหมดที่แสดง"}
                 </button>
                 <span>&bull;</span>
                 <button
@@ -1042,7 +875,7 @@ export function ActivityDetail({
                 <div className="p-6 text-center text-sm text-muted-foreground">
                   {searchingCandidates
                     ? "กำลังค้นหารายชื่อ..."
-                    : "ไม่พบรายชื่อผู้ใช้ที่ยังไม่ลงทะเบียน"}
+                    : "ไม่พบนิสิตที่ยังไม่ลงทะเบียน"}
                 </div>
               ) : (
                 candidates.map((c) => {
@@ -1061,6 +894,7 @@ export function ActivityDetail({
                         <input
                           type="checkbox"
                           checked={isChecked}
+                          disabled={busy || searchingCandidates || (!isChecked && selectedCandidates.length >= 500)}
                           onChange={() => {}}
                           className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
                         />
@@ -1094,10 +928,17 @@ export function ActivityDetail({
                 onClick={handleAddSelectedCandidates}
                 disabled={busy || selectedCandidates.length === 0}
               >
-                เพิ่มที่เลือก ({selectedCandidates.length})
+                เพิ่มที่เลือกและให้ดาว ({selectedCandidates.length})
               </Button>
             </DialogFooter>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={participantImportOpen} onOpenChange={setParticipantImportOpen}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader className="sr-only"><DialogTitle>นำเข้าผู้เข้าร่วมจาก Excel</DialogTitle><DialogDescription>{activity.title} · บันทึกเช็คอินและให้ดาวสีเหลืองทันที</DialogDescription></DialogHeader>
+          <StudentExcelImport target={{ mode: "participants", academicYearId: activity.academicYearId, activityId: activity.id }} targetLabel={activity.title} disabled={busy || (status !== "PUBLISHED" && status !== "COMPLETED")} onImported={async () => { await reloadParticipants(true); notifyActivityUpdate(); }} />
         </DialogContent>
       </Dialog>
 
@@ -1107,7 +948,7 @@ export function ActivityDetail({
           <DialogHeader>
             <DialogTitle>ตั้งเวลาให้ทุกคน ({rows.length} คน)</DialogTitle>
             <DialogDescription>
-              กำหนดเวลาเช็คอินและเช็คเอาท์ให้กับผู้เข้าร่วมทั้งหมดพร้อมกัน
+              กำหนดเวลาเช็คอินให้กับผู้เข้าร่วมทั้งหมดพร้อมกัน
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1121,20 +962,7 @@ export function ActivityDetail({
                 disabled={bulkSaving}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="bulk-out">เวลาเช็คเอาท์</Label>
-              <Input
-                id="bulk-out"
-                type="datetime-local"
-                value={bulkOut}
-                onChange={(e) => setBulkOut(e.target.value)}
-                disabled={bulkSaving}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              หมายเหตุ: หากเว้นว่างช่องใด ระบบจะไม่แตะต้องข้อมูลในช่องนั้น
-              และเวลาเช็คเอาท์จะบันทึกให้เฉพาะคนที่มีเวลาเช็คอินแล้วเท่านั้น
-            </p>
+            <p className="text-xs text-muted-foreground">บันทึกเช็คอินให้ทุกคน ดาวสีเหลืองจะประเมินหลัง QR หมดอายุ หากไม่มี QR จะประเมินหลังสิ้นสุดกิจกรรม</p>
             <DialogFooter className="mt-4 gap-2">
               <Button
                 type="button"
@@ -1147,63 +975,12 @@ export function ActivityDetail({
               <Button
                 type="button"
                 onClick={promptBulkSaveTimes}
-                disabled={bulkSaving || (!bulkIn && !bulkOut)}
+                disabled={bulkSaving || !bulkIn}
               >
                 บันทึกเวลาให้ทุกคน
               </Button>
             </DialogFooter>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal บันทึก/แก้ไขเวลารายบุคคล */}
-      <Dialog
-        open={Boolean(editingTime)}
-        onOpenChange={(open) => {
-          if (!open) setEditingTime(null);
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {editingTime?.eventType === "CHECK_IN"
-                ? "บันทึกเวลาเช็คอิน"
-                : "บันทึกเวลาเช็คเอาท์"}
-            </DialogTitle>
-            <DialogDescription>
-              ผู้เข้าร่วม: {editingTime?.userName}
-            </DialogDescription>
-          </DialogHeader>
-          {editingTime && (
-            <form onSubmit={saveSingleTime} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="single-time">วันและเวลา</Label>
-                <Input
-                  id="single-time"
-                  type="datetime-local"
-                  value={editingTime.value}
-                  onChange={(e) =>
-                    setEditingTime({ ...editingTime, value: e.target.value })
-                  }
-                  disabled={savingTime}
-                  required
-                />
-              </div>
-              <DialogFooter className="mt-4 gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setEditingTime(null)}
-                  disabled={savingTime}
-                >
-                  ยกเลิก
-                </Button>
-                <Button type="submit" disabled={savingTime}>
-                  {savingTime ? "กำลังบันทึก..." : "บันทึกเวลา"}
-                </Button>
-              </DialogFooter>
-            </form>
-          )}
         </DialogContent>
       </Dialog>
 

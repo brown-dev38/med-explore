@@ -20,6 +20,11 @@ export default function AdminActivitiesPage() {
 
 async function AdminActivitiesContent() {
   const user = await requirePermission(PERMISSIONS.ACTIVITY_MANAGE);
+  const academicYears = await prisma.academicYear.findMany({
+    orderBy: { startsOn: "desc" },
+    select: { id: true, code: true, status: true },
+  });
+  const activeAcademicYear = academicYears.find((year) => year.status === "ACTIVE");
 
   const activities = await prisma.activity.findMany({
     orderBy: { startsAt: "desc" },
@@ -34,15 +39,15 @@ async function AdminActivitiesContent() {
 
   return (
     <div className="space-y-6">
-      <div>
+      {/* <div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
           จัดการกิจกรรม
         </h1>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
           สร้างกิจกรรม เปิดรับลงทะเบียน และบันทึกการเข้างาน
         </p>
-      </div>
-      <ActivitiesManager initial={initial} detailBasePath="/admin/activities" canDeleteAll={hasRole(user, ROLES.ADMIN)} />
+      </div> */}
+      <ActivitiesManager initial={initial} academicYears={academicYears.map((year) => ({ ...year, id: String(year.id) }))} activeAcademicYearCode={activeAcademicYear?.code ?? null} detailBasePath="/admin/activities" canDeleteAll={hasRole(user, ROLES.ADMIN)} />
     </div>
   );
 }

@@ -104,9 +104,9 @@ test("all activities includes all statuses but only the selected year", () => {
   assert.ok(!results.some((item) => item.id === "another year"));
 });
 
-test("completed attendance requires both records belonging to the same student", () => {
+test("attendance requires a check-in belonging to the same student", () => {
   const query = studentActivityWhere("2", "10", now, "attended");
-  assert.deepEqual(activities.filter((item) => matches(item, query)).map((item) => item.id), ["attended"]);
+  assert.deepEqual(activities.filter((item) => matches(item, query)).map((item) => item.id), ["attended", "only checked in", "check-in belongs to user, check-out to someone else"]);
 });
 
 test("historical year queries exclude the current year's activities", () => {
@@ -123,21 +123,21 @@ test("cancelled activities belong to the selected year regardless of registratio
   assert.deepEqual(records.filter((item) => matches(item, query)).map((item) => item.id), ["cancelled", "registered cancelled"]);
 });
 
-test("a completed activity with only check-in needs time verification, not full attendance or missed", () => {
+test("a check-in alone counts as attendance without an incomplete warning", () => {
   const record = activities.find((item) => item.id === "only checked in");
   const attendance = record.participations[0];
   const data = { activity: record, attendanceRecords: attendance.attendanceRecords };
   const original = structuredClone(data);
-  assert.equal(isIncompleteCompletedParticipation(data), true);
-  assert.equal(matches(record, studentActivityWhere("2", "10", now, "attended")), false);
+  assert.equal(isIncompleteCompletedParticipation(data), false);
+  assert.equal(matches(record, studentActivityWhere("2", "10", now, "attended")), true);
   assert.equal(matches(record, studentActivityWhere("2", "10", now, "missed")), false);
   assert.deepEqual(data, original, "displaying incomplete attendance must not fabricate a checkout");
 });
 
-test("a recorded checkout resolves the incomplete notice; other activity statuses do not trigger it", () => {
+test("only missing check-in triggers a completed activity notice", () => {
   const data = { activity: { status: "COMPLETED" }, attendanceRecords: [{ eventType: "CHECK_IN" }] };
   assert.equal(isIncompleteCompletedParticipation({ ...data, attendanceRecords: [...data.attendanceRecords, { eventType: "CHECK_OUT" }] }), false);
-  assert.equal(isIncompleteCompletedParticipation({ ...data, attendanceRecords: [] }), false);
+  assert.equal(isIncompleteCompletedParticipation({ ...data, attendanceRecords: [] }), true);
   for (const status of ["DRAFT", "PUBLISHED", "CANCELLED"]) {
     assert.equal(isIncompleteCompletedParticipation({ ...data, activity: { status } }), false, status);
   }

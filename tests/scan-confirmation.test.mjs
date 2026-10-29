@@ -64,34 +64,7 @@ function scanner() {
   };
 }
 
-const preview = (purpose = "CHECK_OUT") => Response.json({ success: true, data: { purpose } });
-const checkedOut = () => Response.json({ data: { eventType: "CHECK_OUT", evaluation: { attendedMinutes: 95, yellowStarPoints: 1, message: "ผ่านเกณฑ์รับดาว" } } }, { status: 201 });
-
-test("opening a checkout QR displays a confirmation button and records only once after clicking it", async (context) => {
-  const requests = [];
-  let finish;
-  context.mock.method(globalThis, "fetch", async (url, options = {}) => {
-    requests.push({ url, options });
-    if (options.method !== "POST") return preview();
-    return new Promise((resolve) => { finish = resolve; });
-  });
-  const ui = scanner();
-  ui.render(); await ui.settle();
-  assert.equal(requests.length, 1);
-  assert.equal(requests[0].options.method, undefined);
-  const button = ui.confirm();
-  assert.ok(button);
-  const saved = button.props.onClick();
-  await button.props.onClick();
-  assert.equal(requests.filter(({ options }) => options.method === "POST").length, 1);
-  assert.deepEqual(JSON.parse(requests[1].options.body), { token: "checkout-token", academicYearId: "2" });
-  assert.equal(new URL(requests[0].url, "https://example.test").searchParams.get("academicYearId"), "2");
-  assert.equal(ui.confirm(), undefined);
-  finish(checkedOut()); await saved;
-  assert.equal(ui.updates(), 1);
-  assert.ok(ui.render().some((node) => node.type === "AlertDescription" && ui.text(node).includes("บันทึกเช็คเอาท์สำเร็จ")));
-  ui.unmount();
-});
+const preview = (purpose = "CHECK_IN") => Response.json({ success: true, data: { purpose } });
 
 test("an invalid QR has no confirmation button and never posts attendance", async (context) => {
   const request = context.mock.method(globalThis, "fetch", async () => Response.json({ message: "QR หมดอายุแล้ว" }, { status: 400 }));
@@ -103,21 +76,6 @@ test("an invalid QR has no confirmation button and never posts attendance", asyn
   ui.unmount();
 });
 
-test("checkout without check-in shows an error and never offers registration or a check-in button", async (context) => {
-  const requests = [];
-  context.mock.method(globalThis, "fetch", async (url, options = {}) => {
-    requests.push(url);
-    return options.method === "POST"
-      ? Response.json({ code: "NOT_REGISTERED", activity: { id: "4", status: "PUBLISHED" } }, { status: 400 }) : preview();
-  });
-  const ui = scanner(); ui.render(); await ui.settle();
-  await ui.confirm().props.onClick();
-  assert.ok(ui.render().some((node) => node.type === "AlertDescription" && ui.text(node) === "ยังไม่พบการเช็คอิน ไม่สามารถเช็คเอาท์ได้"));
-  assert.ok(!ui.render().some((node) => node.type === "Button" && ui.text(node) === "Check-in เข้างาน"));
-  assert.ok(!requests.some((url) => url.includes("participations")));
-  ui.unmount();
-});
-
 test("check-in retains the simple button for a new participant without an unregistered warning", async (context) => {
   context.mock.method(globalThis, "fetch", async (_url, options = {}) => options.method === "POST"
     ? Response.json({ code: "NOT_REGISTERED", message: "คุณยังไม่ได้ลงทะเบียนกิจกรรมนี้", activity: { id: "4", status: "PUBLISHED" } }, { status: 400 }) : preview("CHECK_IN"));
@@ -125,24 +83,6 @@ test("check-in retains the simple button for a new participant without an unregi
   assert.ok(nodes.some((node) => node.type === "Button" && ui.text(node) === "Check-in เข้างาน"));
   assert.ok(!nodes.some((node) => node.type === "AlertTitle" && ui.text(node).includes("ยังไม่ได้ลงทะเบียน")));
   assert.equal(ui.confirm(), undefined);
-  ui.unmount();
-});
-
-test("changing QR tokens aborts an outstanding checkout and ignores its stale result", async (context) => {
-  let finish;
-  let signal;
-  context.mock.method(globalThis, "fetch", async (_url, options = {}) => {
-    if (options.method !== "POST") return preview();
-    signal = options.signal;
-    return new Promise((resolve) => { finish = resolve; });
-  });
-  const ui = scanner(); ui.render(); await ui.settle();
-  const saving = ui.confirm().props.onClick();
-  ui.changeToken("another-checkout-token"); await ui.settle();
-  assert.equal(signal.aborted, true);
-  finish(checkedOut()); await saving;
-  assert.ok(ui.confirm());
-  assert.equal(ui.updates(), 0);
   ui.unmount();
 });
 

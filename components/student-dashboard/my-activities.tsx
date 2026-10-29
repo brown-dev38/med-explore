@@ -6,7 +6,6 @@ import {
   Sparkles,
   ArrowRight,
   Star,
-  Clock,
   Award,
   CheckCircle2,
   Users,
@@ -15,7 +14,6 @@ import { prisma } from "@/lib/prisma";
 import { getStudentDashboardContext, type StudentTarget } from "@/lib/student-dashboard";
 import { getStudentYearContext } from "@/lib/student-academic-years";
 import { formatThaiDateTime } from "@/lib/datetime";
-import { attendanceMinutesFromRecords } from "@/lib/attendance-calculation";
 import { isIncompleteCompletedParticipation, type StudentYearPageProps } from "@/lib/student-activity-filters";
 import { StudentYearSelector } from "@/components/student-year-selector";
 import type { HelperStatus, ParticipationStatus } from "@/types/activity";
@@ -163,12 +161,8 @@ async function MyActivitiesContent({ target, searchParams }: StudentYearPageProp
                 const checkIn = p.attendanceRecords.find(
                   (r) => r.eventType === "CHECK_IN",
                 );
-                const checkOut = p.attendanceRecords.find(
-                  (r) => r.eventType === "CHECK_OUT",
-                );
                 const statusConfig = STATUS_CONFIG[p.status];
                 const incomplete = isIncompleteCompletedParticipation(p);
-                const attendedMinutes = attendanceMinutesFromRecords(p.attendanceRecords);
                 const yellowStars = p.starTransactions
                   .filter((star) => star.starType === "YELLOW" && star.status === "APPROVED")
                   .reduce((sum, star) => sum + star.points, 0);
@@ -218,37 +212,12 @@ async function MyActivitiesContent({ target, searchParams }: StudentYearPageProp
                               : "—"}
                           </span>
                         </div>
-                        <div className="flex items-center justify-between border-t pt-2">
-                          <span className="text-muted-foreground">เวลาเช็คเอาท์:</span>
-                          <span className="font-medium text-foreground">
-                            {checkOut
-                              ? formatThaiDateTime(checkOut.occurredAt.toISOString())
-                              : "—"}
-                          </span>
-                        </div>
                       </div>
                       {incomplete && (
                         <p className="mt-3 text-xs leading-relaxed text-amber-700">
-                          กิจกรรมสิ้นสุดแล้วแต่ยังไม่มีเช็คเอาท์ กรุณาติดต่อผู้จัดเพื่อตรวจสอบและบันทึกเวลาออกตามจริง
+                          กิจกรรมสิ้นสุดแล้วแต่ยังไม่มีเช็คอิน กรุณาติดต่อผู้จัดเพื่อตรวจสอบ
                         </p>
                       )}
-                      <div className="mt-3 rounded-xl border border-primary/15 bg-primary/5 p-3">
-                        <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                          <Clock className="size-3.5" />สรุปเวลาเข้าร่วม
-                        </p>
-                        <p className="mt-1 text-xl font-semibold tabular-nums">
-                          {attendedMinutes === null ? "—" : attendedMinutes}{" "}
-                          <span className="text-sm font-normal text-muted-foreground">นาที</span>
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          เกณฑ์ของกิจกรรมนี้ {p.activity.minMinutes} นาที
-                          {attendedMinutes !== null
-                            ? ` · ${attendedMinutes >= p.activity.minMinutes ? "ผ่านเกณฑ์เวลา" : "ยังไม่ครบเกณฑ์เวลา"}`
-                            : checkIn && checkOut
-                              ? " · เวลาเข้า–ออกไม่ถูกต้อง กรุณาติดต่อผู้จัด"
-                              : " · รอบันทึกเช็คอิน–เช็คเอาท์ให้ครบ"}
-                        </p>
-                      </div>
                       <div className="mt-3 flex items-center justify-between gap-3 text-sm">
                         <span className="text-muted-foreground">ดาวจากกิจกรรมนี้</span>
                         <Badge variant="outline" className="gap-1 border-amber-300 text-amber-700">
@@ -260,13 +229,11 @@ async function MyActivitiesContent({ target, searchParams }: StudentYearPageProp
                         <p className="mt-2 text-xs text-muted-foreground">{p.reviewNote}</p>
                       )}
                       {!p.reviewNote &&
-                        p.attendedMinutes === null &&
-                        attendedMinutes !== null &&
-                        attendedMinutes >= p.activity.minMinutes &&
+                        checkIn &&
                         p.activity.status !== "CANCELLED" &&
                         yellowStars === 0 && (
                           <p className="mt-2 text-xs text-muted-foreground">
-                            รอผู้จัดตรวจสอบผลการรับดาว
+                            รอรับดาวสีเหลืองอัตโนมัติหลัง QR เช็คอินหมดอายุ
                           </p>
                         )}
                     </CardContent>

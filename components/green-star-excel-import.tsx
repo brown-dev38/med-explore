@@ -11,8 +11,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 
-export function GreenStarExcelImport({ target, targetLabel, disabled = false, onImported }: {
-  target: GreenStarImportTarget;
+type StudentExcelTarget = GreenStarImportTarget | { mode: "participants"; academicYearId: string; activityId: string };
+type StudentExcelSubmission = Omit<GreenStarImportInput, "target"> & { target: StudentExcelTarget };
+
+export function StudentExcelImport({ target, targetLabel, disabled = false, onImported }: {
+  target: StudentExcelTarget;
   targetLabel: string;
   disabled?: boolean;
   onImported?: () => Promise<void>;
@@ -28,10 +31,13 @@ export function GreenStarExcelImport({ target, targetLabel, disabled = false, on
   const [pending, setPending] = useState<"preview" | "import" | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [submission, setSubmission] = useState<GreenStarImportInput | null>(null);
+  const [submission, setSubmission] = useState<StudentExcelSubmission | null>(null);
   const busy = pending !== null;
   const ready = rows?.filter((row) => row.status === "ready") ?? [];
   const work = target.mode === "work";
+  const participants = target.mode === "participants";
+  const starLabel = participants ? "ดาวสีเหลือง" : "ดาวสีเขียว";
+  const endpoint = target.mode === "participants" ? `/api/activities/${target.activityId}/participants/import` : "/api/green-stars/import";
 
   async function preview(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -47,8 +53,8 @@ export function GreenStarExcelImport({ target, targetLabel, disabled = false, on
       form.set("file", file);
       form.set("mode", target.mode);
       form.set("academicYearId", target.academicYearId);
-      if (target.mode === "activity") form.set("activityId", target.activityId);
-      const response = await fetch("/api/green-stars/import", { method: "POST", body: form });
+      if (target.mode !== "work") form.set("activityId", target.activityId);
+      const response = await fetch(endpoint, { method: "POST", body: form });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message || "ตรวจสอบไฟล์ไม่สำเร็จ");
       setRows(result.data.rows);
@@ -61,13 +67,15 @@ export function GreenStarExcelImport({ target, targetLabel, disabled = false, on
     if (!submission || inFlight.current || disabled) return false;
     inFlight.current = true; setPending("import"); setError("");
     try {
-      const response = await fetch("/api/green-stars/import", {
+      const response = await fetch(endpoint, {
         method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(submission),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message || "นำเข้าไม่สำเร็จ สามารถลองยืนยันข้อมูลเดิมอีกครั้งได้");
       const count = result.data.imported;
-      const success = `นำเข้าสำเร็จ ${count} คน และให้คนละ 1 ดาวสีเขียวแล้ว`;
+      const success = participants
+        ? `เพิ่มผู้เข้าร่วม ${count} คน และให้ดาวสีเหลือง ${result.data.awarded} คนแล้ว${result.data.awarded < count ? " (บางรายได้รับดาวครบเพดานรายปีแล้ว)" : ""}`
+        : `นำเข้าสำเร็จ ${count} คน และให้คนละ 1 ดาวสีเขียวแล้ว`;
       setMessage(success); toast.success(success);
       setRows(null); setFile(null); setDescription(""); requestId.current = null;
       if (fileInput.current) fileInput.current.value = "";
@@ -86,7 +94,7 @@ export function GreenStarExcelImport({ target, targetLabel, disabled = false, on
   return <Card>
     <CardHeader>
       <CardTitle className="flex items-center gap-2 text-lg"><FileSpreadsheet className="size-5" />นำเข้ารายชื่อจาก Excel</CardTitle>
-      <CardDescription>{targetLabel} · {work ? "ให้คนละ 1 ดาวสีเขียวสำหรับงานเดียวกัน" : "บันทึกการช่วยงานสำเร็จและให้คนละ 1 ดาวสีเขียวทันที"}</CardDescription>
+      <CardDescription>{targetLabel} · {participants ? "เพิ่มเฉพาะนิสิต บันทึกเช็คอินโดยผู้จัดและให้ดาวสีเหลืองทันที สูงสุด 12 ดาวต่อปี" : work ? "ให้คนละ 1 ดาวสีเขียวสำหรับงานเดียวกัน" : "บันทึกการช่วยงานสำเร็จและให้คนละ 1 ดาวสีเขียวทันที"}</CardDescription>
     </CardHeader>
     <CardContent className="space-y-4" aria-busy={busy}>
       {disabled ? <p className="text-sm text-muted-foreground">ขณะนี้ไม่สามารถนำเข้ารายชื่อได้</p> : <>
@@ -107,19 +115,21 @@ export function GreenStarExcelImport({ target, targetLabel, disabled = false, on
               <TableBody>{rows.map((row) => <TableRow key={row.row}><TableCell>{row.row}</TableCell><TableCell className="font-mono">{row.studentCode || "—"}</TableCell><TableCell>{row.name ?? "—"}</TableCell><TableCell className={row.status === "ready" ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground"}>{row.message}</TableCell></TableRow>)}</TableBody>
             </Table>
           </div>
-          <div className="space-y-2"><Label htmlFor={`${id}-description`}>งานที่ช่วยเหลือ{!work && " (ไม่บังคับ)"}</Label><textarea id={`${id}-description`} rows={3} maxLength={1000} value={description} disabled={busy} onChange={(event) => setDescription(event.target.value)} placeholder="ระบุงานเดียวกันสำหรับรายชื่อที่นำเข้าทั้งหมด" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" /></div>
+          {!participants && <div className="space-y-2"><Label htmlFor={`${id}-description`}>งานที่ช่วยเหลือ{!work && " (ไม่บังคับ)"}</Label><textarea id={`${id}-description`} rows={3} maxLength={1000} value={description} disabled={busy} onChange={(event) => setDescription(event.target.value)} placeholder="ระบุงานเดียวกันสำหรับรายชื่อที่นำเข้าทั้งหมด" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" /></div>}
           <Button type="button" disabled={busy || ready.length === 0 || (work && !description.trim())} onClick={() => {
             if (!requestId.current) return;
             setSubmission({ target, studentCodes: ready.map((row) => row.studentCode), description: description.trim(), requestId: requestId.current });
-          }}>{`นำเข้าและให้ดาวสีเขียว ${ready.length} คน`}</Button>
+          }}>{`นำเข้าและให้${starLabel} ${ready.length} คน`}</Button>
         </>}
       </>}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {message && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-400">{message}</p>}
       <ConfirmDialog open={submission !== null} onOpenChange={(open) => { if (!open && !busy) setSubmission(null); }} loading={busy}
-        title="ยืนยันนำเข้าและให้ดาวสีเขียว"
-        description={submission ? `${targetLabel}\nนำเข้าเฉพาะรายชื่อที่ผ่านการตรวจสอบ ${submission.studentCodes.length} คน\n${submission.description ? `งานที่ช่วยเหลือ: ${submission.description}\n` : ""}ให้คนละ 1 ดาวสีเขียวทันที` : ""}
-        confirmText="ยืนยันนำเข้าและให้ดาวสีเขียว" onConfirm={confirm} />
+        title={`ยืนยันนำเข้าและให้${starLabel}`}
+        description={submission ? `${targetLabel}\nนำเข้าเฉพาะรายชื่อที่ผ่านการตรวจสอบ ${submission.studentCodes.length} คน\n${submission.description ? `งานที่ช่วยเหลือ: ${submission.description}\n` : ""}${participants ? "บันทึกเช็คอินและให้ 1 ดาวสีเหลืองทันทีสำหรับนิสิตที่ยังไม่ครบเพดาน 12 ดาวต่อปี" : "ให้คนละ 1 ดาวสีเขียวทันที"}` : ""}
+        confirmText={`ยืนยันนำเข้าและให้${starLabel}`} onConfirm={confirm} />
     </CardContent>
   </Card>;
 }
+
+export { StudentExcelImport as GreenStarExcelImport };

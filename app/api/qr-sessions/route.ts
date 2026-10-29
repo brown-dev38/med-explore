@@ -6,6 +6,7 @@ import { qrSessionCreateSchema } from "@/lib/validation";
 import { errorResponse, parseId, successResponse } from "@/lib/api";
 import { recordAudit } from "@/lib/audit";
 import { generateQrToken, hashQrToken } from "@/lib/qr";
+import { scheduleAttendanceReview } from "@/lib/attendance-worker";
 
 const DEFAULT_TTL_MINUTES = 15;
 
@@ -76,6 +77,7 @@ export async function POST(req: Request) {
       expiresAt: expiresAt.toISOString(),
     },
   });
+  scheduleAttendanceReview(expiresAt);
 
   return successResponse(
     {

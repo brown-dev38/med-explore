@@ -24,7 +24,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 const FILTERS: { value: StudentActivityFilter; label: string; description: string }[] = [
   { value: "all", label: "กิจกรรมทั้งหมด", description: "กิจกรรมทุกสถานะในปีที่เลือก รวมรายการที่คุณไม่ได้ลงทะเบียน" },
   { value: "missed", label: "กิจกรรมที่พลาดไป", description: "กิจกรรมที่สิ้นสุดแล้วและคุณไม่มีบันทึกเช็คอิน รวมรายการที่ไม่ได้ลงทะเบียน โดยไม่นับฉบับร่างหรือกิจกรรมที่ถูกยกเลิก" },
-  { value: "attended", label: "เข้าร่วมแล้ว", description: "กิจกรรมที่คุณมีบันทึกเช็คอินและเช็คเอาท์ครบในปีที่เลือก ยังไม่ได้หมายถึงผ่านเกณฑ์รับดาว" },
+  { value: "attended", label: "เข้าร่วมแล้ว", description: "กิจกรรมที่คุณมีบันทึกเช็คอินในปีที่เลือก ดาวจะประเมินอัตโนมัติหลัง QR หมดอายุ" },
   { value: "cancelled", label: "กิจกรรมที่ถูกยกเลิก", description: "กิจกรรมที่ถูกยกเลิกทั้งหมดในปีที่เลือก รวมรายการที่คุณไม่ได้ลงทะเบียน โดยไม่นับเป็นกิจกรรมที่พลาดไป" },
 ];
 
@@ -107,7 +107,6 @@ async function YearActivitiesContent({ searchParams: params, target }: StudentYe
             const mine = activity.participations[0];
             const incomplete = mine ? isIncompleteCompletedParticipation({ activity, attendanceRecords: mine.attendanceRecords }) : false;
             const checkIn = mine?.attendanceRecords.find((record) => record.eventType === "CHECK_IN");
-            const checkOut = mine?.attendanceRecords.find((record) => record.eventType === "CHECK_OUT");
             return (
               <Card key={String(activity.id)}>
                 <CardHeader>
@@ -123,13 +122,12 @@ async function YearActivitiesContent({ searchParams: params, target }: StudentYe
                   <dl className="space-y-2 text-sm">
                     <div className="flex items-start gap-2"><CalendarDays className="mt-0.5 size-4 shrink-0 text-muted-foreground" /><div><dt className="sr-only">ช่วงเวลา</dt><dd>{formatThaiDateTime(activity.startsAt.toISOString())}<br /><span className="text-muted-foreground">ถึง {formatThaiDateTime(activity.endsAt.toISOString())}</span></dd></div></div>
                     {activity.location && <div className="flex items-start gap-2"><MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" /><div><dt className="sr-only">สถานที่</dt><dd className="break-words">{activity.location}</dd></div></div>}
-                    <div className="flex items-center gap-2 text-muted-foreground"><Clock className="size-4" /><dt>เกณฑ์เวลา</dt><dd>{activity.minMinutes} นาที</dd></div>
+                    <div className="flex items-center gap-2 text-muted-foreground"><Clock className="size-4" /><dd>รับดาวสีเหลืองหลัง QR เช็คอินหมดอายุ ไม่ต้องเช็คเอาท์</dd></div>
                   </dl>
                   <div className="space-y-1 rounded-xl border bg-muted/40 p-3 text-xs">
-                    <p className="font-medium">{checkIn && checkOut ? "บันทึกเวลาเข้า–ออกครบแล้ว" : checkIn ? "มีบันทึกเช็คอิน" : mine ? "ลงทะเบียนแล้ว ยังไม่มีบันทึกเช็คอิน" : "ไม่มีประวัติลงทะเบียน"}</p>
+                    <p className="font-medium">{checkIn ? "มีบันทึกเช็คอิน" : mine ? "ลงทะเบียนแล้ว ยังไม่มีบันทึกเช็คอิน" : "ไม่มีประวัติลงทะเบียน"}</p>
                     {checkIn && <p className="text-muted-foreground">เช็คอิน: {formatThaiDateTime(checkIn.occurredAt.toISOString())}</p>}
-                    {checkOut && <p className="text-muted-foreground">เช็คเอาท์: {formatThaiDateTime(checkOut.occurredAt.toISOString())}</p>}
-                    {incomplete && <p className="pt-2 text-amber-700">กิจกรรมสิ้นสุดแล้ว กรุณาติดต่อผู้จัดเพื่อตรวจสอบและบันทึกเวลาออกตามจริง</p>}
+                    {incomplete && <p className="pt-2 text-amber-700">กรุณาติดต่อผู้จัดเพื่อตรวจสอบบันทึกเช็คอิน</p>}
                   </div>
                 </CardContent>
               </Card>

@@ -200,6 +200,7 @@ test("closed years reject later attendance and helper awards so expired balances
       "@/lib/prisma": { prisma: db }, "@/lib/dal": { getCurrentUser: async () => ({ id: String(f.student.id) }) },
       "@/lib/validation": loadTypeScript("../lib/validation.ts"), "@/lib/api": loadTypeScript("../lib/api.ts"),
       "@/lib/qr": qr, "@/lib/attendance": attendance,
+      "@/lib/attendance-worker": { scheduleAttendanceReview: () => {} },
       "@/lib/participations": loadTypeScript("../lib/participations.ts", { "server-only": {} }),
     });
     assert.equal((await scan.GET(new Request(`https://example.test/api/attendance/scan?token=${token}&academicYearId=${f.year.id}`))).status, 200);
@@ -212,7 +213,7 @@ test("closed years reject later attendance and helper awards so expired balances
     }
     await assert.rejects(attendance.recordAttendance({ participationId: participation.id, eventType: "CHECK_IN", method: "ORGANIZER", occurredAt: new Date(), recordedBy: f.admin.id }), (error) => error.status === 409);
     await assert.rejects(attendance.attendanceTransaction((tx) => attendance.recalculateActivityAttendance(tx, activity.id, f.admin.id)), (error) => error.status === 409);
-    const helpers = loadTypeScript("../lib/helpers.ts", { "server-only": {}, "@/lib/prisma": { prisma: db }, "@/lib/audit": {} });
+    const helpers = loadTypeScript("../lib/helpers.ts", { "server-only": {}, "@/lib/prisma": { prisma: db }, "@/lib/audit": {}, "@/lib/helper-awards": loadTypeScript("../lib/helper-awards.ts") });
     await assert.rejects(helpers.updateHelperStatusAndStar(helper.id, "COMPLETED", f.admin.id), /ACADEMIC_YEAR_CLOSED/);
     assert.equal(await f.ledgerBalance(f.student.id), 0);
     assert.equal(await db.attendanceRecord.count({ where: { participationId: participation.id } }), 0);

@@ -75,7 +75,7 @@ export default function RegisterForm() {
 
   return (
     <form onSubmit={submit} className="space-y-5" aria-busy={loading}>
-      <p id="registration-hint" className="text-sm text-muted-foreground">สำหรับนิสิตเท่านั้น กรุณาระบุรหัสนิสิต ผู้จัดกิจกรรมและพนักงานให้ติดต่อ ADMIN เพื่อเพิ่มบัญชีผู้ใช้</p>
+      {/* <p id="registration-hint" className="text-sm text-muted-foreground">สำหรับนิสิตเท่านั้น กรุณาระบุรหัสนิสิต ผู้จัดกิจกรรมและพนักงานให้ติดต่อ ADMIN เพื่อเพิ่มบัญชีผู้ใช้</p> */}
       {error && <Alert variant="destructive" id="register-error"><AlertCircle /><AlertDescription>{error}</AlertDescription></Alert>}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {fields.map((field) => {

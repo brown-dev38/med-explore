@@ -5,7 +5,7 @@ export const metadata = { title: "สมัครสมาชิก | MedExplore
 
 export default function RegisterPage() {
   return (
-    <AuthShell title="สมัครสมาชิกสำหรับนิสิต" description="ใช้รหัสนิสิตเพื่อสร้างบัญชี เข้าร่วมกิจกรรมและสะสมดาวกับ MedExplore Star">
+    <AuthShell title="สมัครสมาชิก" description="">
       <RegisterForm />
     </AuthShell>
   );

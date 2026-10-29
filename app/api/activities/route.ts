@@ -87,7 +87,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const { title, description, location, startsAt, endsAt, minMinutes } =
+  const { title, description, location, startsAt, endsAt } =
     parsed.data;
 
   let academicYearId: bigint | null = null;
@@ -116,7 +116,6 @@ export async function POST(req: Request) {
       location: location ?? null,
       startsAt: new Date(startsAt),
       endsAt: new Date(endsAt),
-      minMinutes: minMinutes ?? 90,
       status: "DRAFT",
     },
   });

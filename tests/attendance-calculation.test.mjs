@@ -56,7 +56,7 @@ test("attendance and star failures run inside the same transaction and roll all 
   const tx = {
     $queryRaw: async () => [{ status: "ACTIVE" }],
     attendanceRecord: { findMany: async () => [], create: async ({ data }) => { const record = { id: 1n, ...data }; state.records.push(record); return record; } },
-    participation: { findUniqueOrThrow: async () => ({ activityId: 1n }) },
+    participation: { findUniqueOrThrow: async () => ({ activityId: 1n }), update: async () => ({}) },
     auditLog: { create: async ({ data }) => { state.audits.push(data); } },
   };
   const attendance = loadTypeScript("../lib/attendance.ts", {

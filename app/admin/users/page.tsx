@@ -44,14 +44,14 @@ async function UsersContent() {
 
   return (
     <div className="space-y-6">
-      <div>
+      {/* <div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
           จัดการผู้ใช้งาน
         </h1>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
           ค้นหา แก้ไขโปรไฟล์ มอบบทบาท และปิด/เปิดบัญชีผู้ใช้
         </p>
-      </div>
+      </div> */}
       <UsersTable initialResult={initialResult} currentUserId={actor.id} canDeleteUsers={hasRole(actor, ROLES.ADMIN)} canResetPasswords={hasRole(actor, ROLES.ADMIN)} />
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -28,11 +28,10 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 type ScanState = {
-  status: "loading" | "ok" | "info" | "error" | "unregistered" | "ready_checkout";
+  status: "loading" | "ok" | "info" | "error" | "unregistered";
   message: string;
   activityId?: string;
   canRegister?: boolean;
-  token?: string;
 };
 
 type ScanResponse = {
@@ -47,13 +46,12 @@ function extractToken(raw: string): string {
   return match ? decodeURIComponent(match[1]) : raw.trim();
 }
 
-function scanStateFrom(res: Response, json: ScanResponse, purpose?: "CHECK_OUT"): ScanState {
+function scanStateFrom(res: Response, json: ScanResponse): ScanState {
   if (res.ok) {
-    const eventType = json.data?.eventType;
     const evaluation = json.data?.evaluation;
     return {
       status: "ok",
-      message: `บันทึก${eventType === "CHECK_IN" ? "เช็คอิน" : "เช็คเอาท์"}สำเร็จ${evaluation?.attendedMinutes !== null && evaluation?.attendedMinutes !== undefined ? ` · เข้าร่วม ${evaluation.attendedMinutes} นาที · ${evaluation.message}` : ""}`,
+      message: `บันทึกเช็คอินสำเร็จ · ${evaluation?.message ?? "รอรับดาวสีเหลืองอัตโนมัติหลัง QR หมดอายุ"}`,
     };
   }
   if (res.status === 409) {
@@ -63,9 +61,6 @@ function scanStateFrom(res: Response, json: ScanResponse, purpose?: "CHECK_OUT")
     };
   }
   if (json.code === "NOT_REGISTERED") {
-    if (purpose === "CHECK_OUT") {
-      return { status: "error", message: "ยังไม่พบการเช็คอิน ไม่สามารถเช็คเอาท์ได้" };
-    }
     return {
       status: "unregistered",
       message: json.message ?? "คุณยังไม่ได้ลงทะเบียนกิจกรรมนี้",
@@ -86,7 +81,6 @@ export function ScanClient({ academicYearId, academicYearCode }: { academicYearI
   const yearQuery = `academicYearId=${encodeURIComponent(academicYearId)}`;
   const [manualToken, setManualToken] = useState("");
   const [scanning, setScanning] = useState(false);
-  const checkoutRequest = useRef<AbortController | null>(null);
   const [state, setState] = useState<ScanState>({
     status: "loading",
     message: "กำลังตรวจสอบ QR Code...",
@@ -105,10 +99,6 @@ export function ScanClient({ academicYearId, academicYearCode }: { academicYearI
       if (!active) return;
       if (!preview.ok) {
         setState({ status: "error", message: previewJson.message ?? "ตรวจสอบ QR Code ไม่สำเร็จ" });
-        return;
-      }
-      if (previewJson.data?.purpose === "CHECK_OUT") {
-        setState({ status: "ready_checkout", message: "", token });
         return;
       }
       if (previewJson.data?.purpose !== "CHECK_IN") {
@@ -137,8 +127,6 @@ export function ScanClient({ academicYearId, academicYearCode }: { academicYearI
     return () => {
       active = false;
       controller.abort();
-      checkoutRequest.current?.abort();
-      checkoutRequest.current = null;
     };
   }, [token, academicYearId]);
 
@@ -155,28 +143,6 @@ export function ScanClient({ academicYearId, academicYearCode }: { academicYearI
   function submitManual(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     goToToken(manualToken);
-  }
-
-  async function confirmCheckOut() {
-    if (state.status !== "ready_checkout" || state.token !== token || checkoutRequest.current) return;
-    const controller = new AbortController();
-    checkoutRequest.current = controller;
-    setState({ status: "loading", message: "กำลังบันทึก Check-out..." });
-    try {
-      const res = await fetch("/api/attendance/scan", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, academicYearId }), signal: controller.signal,
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!controller.signal.aborted) {
-        setState(scanStateFrom(res, json, "CHECK_OUT"));
-        if (res.ok || res.status === 409) notifyActivityUpdate();
-      }
-    } catch {
-      if (!controller.signal.aborted) setState({ status: "error", message: "ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ กรุณาสแกนอีกครั้ง" });
-    } finally {
-      if (checkoutRequest.current === controller) checkoutRequest.current = null;
-    }
   }
 
   async function registerAndCheckIn() {
@@ -225,7 +191,7 @@ export function ScanClient({ academicYearId, academicYearCode }: { academicYearI
           บันทึกการเข้างาน (QR Code)
         </CardTitle>
         <CardDescription className="text-xs">
-          ปีการศึกษา {academicYearCode} · สแกน QR Code จากหน้าจอผู้จัดเพื่อบันทึกเวลา เช็คอิน / เช็คเอาท์
+          ปีการศึกษา {academicYearCode} · สแกน QR Code จากหน้าจอผู้จัดเพื่อบันทึกเวลา เช็คอิน
         </CardDescription>
       </CardHeader>
 
@@ -283,11 +249,6 @@ export function ScanClient({ academicYearId, academicYearCode }: { academicYearI
           </div>
         ) : (
           <div className="space-y-4">
-            {state.status === "ready_checkout" && state.token === token && (
-              <Button type="button" onClick={confirmCheckOut} className="w-full gap-2 py-5">
-                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />ยืนยัน Check-out
-              </Button>
-            )}
             {state.status === "loading" && (
               <div className="flex flex-col items-center justify-center py-6 text-center">
                 <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />

@@ -40,30 +40,29 @@ type AttendanceWrite = { eventType: AttendanceEvent; occurredAt: Date };
 
 async function writeEvents(tx: Prisma.TransactionClient, params: {
   participationId: bigint; events: AttendanceWrite[]; method: AttendanceMethod;
-  recordedBy: bigint; replaceExisting: boolean; skipMissingCheckIn?: boolean;
+  recordedBy: bigint; replaceExisting: boolean;
+  qrSessionId?: bigint;
 }) {
   const { participationId, method, recordedBy } = params;
   if (!(await lockAttendanceUser(tx, participationId))) throw new AttendanceError("ไม่พบผู้เข้าร่วม", 404);
   const participation = await tx.participation.findUniqueOrThrow({ where: { id: participationId }, select: { activityId: true } });
   await requireOpenActivityYear(tx, participation.activityId);
-  const current = await tx.attendanceRecord.findMany({ where: { participationId } });
-  let events = params.events;
-  const existingIn = current.find((record) => record.eventType === "CHECK_IN");
-  let skippedCheckOut = false;
-  if (events.some((event) => event.eventType === "CHECK_OUT") && !existingIn && !events.some((event) => event.eventType === "CHECK_IN")) {
-    if (!params.skipMissingCheckIn) throw new AttendanceError("ยังไม่พบการเช็คอิน ไม่สามารถบันทึกเช็คเอาท์ได้", 400);
-    events = events.filter((event) => event.eventType !== "CHECK_OUT");
-    skippedCheckOut = true;
+  if (params.qrSessionId !== undefined) {
+    const session = await tx.qrSession.findUnique({ where: { id: params.qrSessionId } });
+    if (!session || session.activityId !== participation.activityId || session.purpose !== "CHECK_IN" || session.revokedAt || session.expiresAt <= new Date()) {
+      throw new AttendanceError("QR ไม่ถูกต้อง ถูกยกเลิก หรือหมดอายุแล้ว", 400);
+    }
+    await tx.participation.update({ where: { id: participationId }, data: { reviewDueAt: session.expiresAt } });
+  } else if (params.events.some((event) => event.eventType === "CHECK_IN")) {
+    await tx.participation.update({ where: { id: participationId }, data: { reviewDueAt: null } });
   }
+  const current = await tx.attendanceRecord.findMany({ where: { participationId } });
+  const events = params.events;
+  const skippedCheckOut = false;
   if (events.length === 0) return { record: null, created: false, evaluation: null, skippedCheckOut };
   if (!params.replaceExisting) {
     const duplicate = events.find((event) => current.some((record) => record.eventType === event.eventType));
     if (duplicate) throw new AttendanceError(`มีการลงเวลา${duplicate.eventType === "CHECK_IN" ? "เช็คอิน" : "เช็คเอาท์"}สำหรับผู้เข้าร่วมรายนี้ไปแล้ว`, 409);
-  }
-  const prospectiveIn = events.find((event) => event.eventType === "CHECK_IN")?.occurredAt ?? existingIn?.occurredAt;
-  const prospectiveOut = events.find((event) => event.eventType === "CHECK_OUT")?.occurredAt ?? current.find((record) => record.eventType === "CHECK_OUT")?.occurredAt;
-  if (prospectiveIn && prospectiveOut && prospectiveOut < prospectiveIn) {
-    throw new AttendanceError("เวลาเช็คเอาท์ต้องไม่อยู่ก่อนเวลาเช็คอิน", 400);
   }
   const records = [];
   let created = false;
@@ -87,7 +86,9 @@ async function writeEvents(tx: Prisma.TransactionClient, params: {
 export async function recordAttendance(params: {
   participationId: bigint; eventType: AttendanceEvent; method: AttendanceMethod;
   occurredAt: Date; recordedBy: bigint; replaceExisting?: boolean;
+  qrSessionId?: bigint;
 }) {
+  if (params.eventType !== "CHECK_IN") throw new AttendanceError("กิจกรรมนี้ใช้การเช็คอินเท่านั้น ไม่ต้องเช็คเอาท์", 400);
   const result = await attendanceTransaction((tx) => writeEvents(tx, {
     ...params, events: [{ eventType: params.eventType, occurredAt: params.occurredAt }], replaceExisting: params.replaceExisting ?? false,
   }));
@@ -95,22 +96,22 @@ export async function recordAttendance(params: {
 }
 
 export async function bulkRecordAttendance(activityId: bigint, actorId: bigint, checkInAt: Date | null, checkOutAt: Date | null) {
+  if (checkOutAt) throw new AttendanceError("กิจกรรมนี้ใช้การเช็คอินเท่านั้น ไม่ต้องเช็คเอาท์", 400);
   return attendanceTransaction(async (tx) => {
     const participations = await tx.participation.findMany({ where: { activityId }, select: { id: true }, orderBy: { userId: "asc" } });
     let updated = 0;
     let skippedCheckOut = 0;
     const events: AttendanceWrite[] = [
       ...(checkInAt ? [{ eventType: "CHECK_IN" as const, occurredAt: checkInAt }] : []),
-      ...(checkOutAt ? [{ eventType: "CHECK_OUT" as const, occurredAt: checkOutAt }] : []),
     ];
     for (const participation of participations) {
-      const result = await writeEvents(tx, { participationId: participation.id, events, method: "ORGANIZER", recordedBy: actorId, replaceExisting: true, skipMissingCheckIn: true });
+      const result = await writeEvents(tx, { participationId: participation.id, events, method: "ORGANIZER", recordedBy: actorId, replaceExisting: true });
       if (result.record) updated++;
       if (result.skippedCheckOut) skippedCheckOut++;
     }
     await tx.auditLog.create({ data: {
       actorId, action: "attendance.bulk", entityType: "Activity", entityId: activityId,
-      details: { checkInAt: checkInAt?.toISOString() ?? null, checkOutAt: checkOutAt?.toISOString() ?? null, participants: participations.length, updated, skippedCheckOut },
+      details: { checkInAt: checkInAt?.toISOString() ?? null, participants: participations.length, updated },
     } });
     return { participants: participations.length, updated, skippedCheckOut };
   });
@@ -129,28 +130,30 @@ export async function recalculateActivityAttendance(tx: Prisma.TransactionClient
   return { participants: participations.length };
 }
 
-export async function backfillAttendanceResults(participationIds?: readonly bigint[]) {
+export async function backfillAttendanceResults(participationIds?: readonly bigint[], activityId?: bigint) {
   return attendanceTransaction(async (tx) => {
+    const now = new Date();
     const pending = await tx.participation.findMany({
       where: {
         ...(participationIds ? { id: { in: [...participationIds] } } : {}),
-        attendedMinutes: null,
-        activity: { academicYear: { status: { not: "CLOSED" } } },
-        AND: [
-          { attendanceRecords: { some: { eventType: "CHECK_IN" } } },
-          { attendanceRecords: { some: { eventType: "CHECK_OUT" } } },
-        ],
+        ...(activityId !== undefined ? { activityId } : {}),
+        eligibilityStatus: { not: "APPROVED" },
+        NOT: { eligibilityStatus: "REJECTED", reviewedBy: { not: null } },
+        activity: { status: { in: ["PUBLISHED", "COMPLETED"] }, academicYear: { status: { not: "CLOSED" } } },
+        user: { userRoles: { some: { role: { name: "STUDENT" } } } },
+        attendanceRecords: { some: { eventType: "CHECK_IN", occurredAt: { lte: now } } },
+        OR: [{ reviewDueAt: null }, { reviewDueAt: { lte: now } }],
       },
-      select: { id: true, activityId: true }, orderBy: [{ userId: "asc" }, { id: "asc" }],
+      select: { id: true, activityId: true }, orderBy: [{ userId: "asc" }, { id: "asc" }], take: 250,
     });
     const processed: string[] = [];
     let approvedYellowStars = 0;
     for (const participation of pending) {
       await requireOpenActivityYear(tx, participation.activityId);
       if (!(await lockAttendanceUser(tx, participation.id))) continue;
-      const current = await tx.participation.findUnique({ where: { id: participation.id }, select: { attendedMinutes: true } });
-      if (!current || current.attendedMinutes !== null) continue;
-      const result = await evaluateAttendance(tx, participation.id, null);
+      const current = await tx.participation.findUnique({ where: { id: participation.id }, select: { eligibilityStatus: true, reviewedBy: true } });
+      if (!current || current.eligibilityStatus === "APPROVED" || (current.eligibilityStatus === "REJECTED" && current.reviewedBy != null)) continue;
+      const result = await evaluateAttendance(tx, participation.id, null, now);
       approvedYellowStars += result.yellowStarPoints;
       processed.push(String(participation.id));
     }

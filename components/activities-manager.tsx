@@ -64,20 +64,26 @@ const emptyForm = {
   location: "",
   startsAt: "",
   endsAt: "",
-  minMinutes: "90",
   description: "",
 };
 
 export function ActivitiesManager({
   initial,
+  activeAcademicYearCode,
+  academicYears,
   detailBasePath = "/organizer/activities",
   canDeleteAll = false,
 }: {
   initial: ActivityListItem[];
+  activeAcademicYearCode: string | null;
+  academicYears: { id: string; code: string; status: string }[];
   detailBasePath?: string;
   canDeleteAll?: boolean;
 }) {
   const { data: items, setData: setItems, refresh } = useLiveActivityData("/api/activities", initial);
+  const [selectedYearId, setSelectedYearId] = useState(() => academicYears.find((year) => year.status === "ACTIVE")?.id ?? "");
+  const visibleItems = selectedYearId ? items.filter((item) => item.academicYearId === selectedYearId) : items;
+  const selectedYear = academicYears.find((year) => year.id === selectedYearId);
   const [form, setForm] = useState(emptyForm);
   const [createOpen, setCreateOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -135,7 +141,6 @@ export function ActivitiesManager({
       location: form.location.trim() || null,
       startsAt: localInputToIso(form.startsAt),
       endsAt: localInputToIso(form.endsAt),
-      minMinutes: Number(form.minMinutes) || 90,
     });
     if (ok) {
       toast.success("สร้างกิจกรรมใหม่เรียบร้อยแล้ว");
@@ -235,11 +240,25 @@ export function ActivitiesManager({
       <Card>
         <CardHeader className="p-4 pb-0">
           <CardTitle className="text-base font-semibold">
-            รายการกิจกรรมทั้งหมด ({items.length})
+            {selectedYear ? `รายการกิจกรรม ปีการศึกษา ${selectedYear.code}` : "รายการกิจกรรมทั้งหมด"} ({visibleItems.length})
           </CardTitle>
           <CardDescription className="text-xs">
             คลิกที่ชื่อกิจกรรมหรือปุ่มรายละเอียดเพื่อดูข้อมูลผู้ลงทะเบียนและจัดการ QR Code
           </CardDescription>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Label htmlFor="activity-year-filter">ปีการศึกษาที่ต้องการดู</Label>
+            <select
+              id="activity-year-filter"
+              value={selectedYearId}
+              onChange={(event) => setSelectedYearId(event.target.value)}
+              className="h-9 rounded-lg border border-input bg-background px-3 text-sm"
+            >
+              <option value="">ทุกปีการศึกษา</option>
+              {academicYears.map((year) => (
+                <option key={year.id} value={year.id}>{year.code}{year.status === "ACTIVE" ? " (เปิดใช้งาน)" : ""}</option>
+              ))}
+            </select>
+          </div>
         </CardHeader>
         <CardContent className="p-0 pt-3">
           <Table>
@@ -253,17 +272,17 @@ export function ActivitiesManager({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.length === 0 && (
+              {visibleItems.length === 0 && (
                 <TableRow>
                   <TableCell
                     colSpan={5}
                     className="h-28 text-center text-muted-foreground"
                   >
-                    ยังไม่มีกิจกรรมในระบบ กรุณากดปุ่มสร้างกิจกรรมใหม่
+                    {selectedYear ? `ยังไม่มีกิจกรรมในปีการศึกษา ${selectedYear.code}` : "ยังไม่มีกิจกรรมในระบบ กรุณากดปุ่มสร้างกิจกรรมใหม่"}
                   </TableCell>
                 </TableRow>
               )}
-              {items.map((act) => {
+              {visibleItems.map((act) => {
                 const statusInfo = STATUS_CONFIG[act.status];
                 return (
                   <TableRow key={act.id}>
@@ -292,7 +311,7 @@ export function ActivitiesManager({
                       </div>
                       <div className="text-[11px] text-muted-foreground pl-4.5 flex items-center gap-1 mt-1 font-medium">
                         <Clock className="h-3 w-3 text-muted-foreground" />
-                        เกณฑ์เวลา: <span className="font-semibold text-foreground">{act.minMinutes} นาที</span>
+                        ให้ดาวสีเหลืองหลัง QR เช็คอินหมดอายุ
                       </div>
                     </TableCell>
                     <TableCell>
@@ -380,10 +399,15 @@ export function ActivitiesManager({
           <DialogHeader>
             <DialogTitle>สร้างกิจกรรมใหม่</DialogTitle>
             <DialogDescription>
-              กรอกข้อมูลกิจกรรม ช่วงเวลา และเงื่อนไขนาทีขั้นต่ำในการเข้าร่วม
+              กรอกข้อมูลกิจกรรมและช่วงเวลา นิสิตรับดาวสีเหลืองหลัง QR เช็คอินหมดอายุ
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreate} className="space-y-4">
+            <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm">
+              <span className="text-muted-foreground">ปีการศึกษา: </span>
+              <span className="font-semibold">{activeAcademicYearCode ?? "ยังไม่มีปีการศึกษาที่เปิดใช้งาน"}</span>
+              {activeAcademicYearCode && <span className="ml-2 text-muted-foreground">(เปิดใช้งาน)</span>}
+            </div>
             <div className="space-y-2">
               <Label htmlFor="act-title">ชื่อกิจกรรม</Label>
               <Input
@@ -407,20 +431,6 @@ export function ActivitiesManager({
                   }
                   placeholder="เช่น ห้องบรรยาย 101"
                   disabled={busy}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="act-minMinutes">นาทีขั้นต่ำสำหรับดาว</Label>
-                <Input
-                  id="act-minMinutes"
-                  type="number"
-                  min={1}
-                  value={form.minMinutes}
-                  onChange={(e) =>
-                    setForm({ ...form, minMinutes: e.target.value })
-                  }
-                  disabled={busy}
-                  required
                 />
               </div>
             </div>

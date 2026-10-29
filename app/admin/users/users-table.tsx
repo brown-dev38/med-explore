@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Search,
@@ -77,6 +77,68 @@ export function UsersTable({
   const [appliedQ, setAppliedQ] = useState("");
   const [appliedRole, setAppliedRole] = useState("");
   const [loading, setLoading] = useState(false);
+  const [selectedUsers, setSelectedUsers] = useState<UserDto[]>([]);
+  const [bulkDisabling, setBulkDisabling] = useState(false);
+  const bulkInFlight = useRef(false);
+  const [bulkErrors, setBulkErrors] = useState<string[]>([]);
+  const selectableUsers = result.items.filter((user) => !disableLockReason(user));
+  const allVisibleSelected = selectableUsers.length > 0 && selectableUsers.every((user) => selectedUsers.some((selected) => selected.id === user.id));
+
+  function disableLockReason(user: UserDto) {
+    if (user.id === currentUserId) return "ไม่สามารถเปลี่ยนสถานะบัญชีที่กำลังล็อกอินอยู่ได้";
+    if (user.isActive && user.roles.includes(ROLES.ADMIN) && result.activeAdminCount <= 1) return "ไม่สามารถปิดใช้งาน ADMIN คนสุดท้ายได้";
+    return null;
+  }
+
+  function toggleUser(user: UserDto) {
+    setSelectedUsers((current) => current.some((selected) => selected.id === user.id)
+      ? current.filter((selected) => selected.id !== user.id) : [...current, user]);
+    setBulkErrors([]);
+  }
+
+  async function updateSelectedUsers(targets: UserDto[], isActive: boolean) {
+    if (bulkInFlight.current || !targets.length) return false;
+    bulkInFlight.current = true;
+    setBulkDisabling(true);
+    setBulkErrors([]);
+    const succeeded = new Set<string>();
+    const errors: string[] = [];
+    const actionLabel = isActive ? "เปิดใช้งาน" : "ปิดใช้งาน";
+    try {
+      // Reuse the guarded update endpoint; each account keeps its own audit entry.
+      for (const user of targets) {
+        try {
+          const response = await fetch(`/api/users/${user.id}`, {
+            method: "PATCH", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ isActive }),
+          });
+          const json = await response.json().catch(() => ({}));
+          if (!response.ok) { errors.push(`${user.username}: ${json.message ?? `${actionLabel}ไม่สำเร็จ`}`); continue; }
+          succeeded.add(user.id);
+        } catch { errors.push(`${user.username}: เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ กรุณาตรวจสอบสถานะและลองใหม่`); }
+      }
+      setSelectedUsers((current) => current.filter((user) => !succeeded.has(user.id)));
+      setResult((current) => ({ ...current, items: current.items.map((user) => succeeded.has(user.id) ? { ...user, isActive } : user) }));
+      setBulkErrors(errors);
+      if (succeeded.size) toast.success(`${actionLabel}ผู้ใช้ ${succeeded.size} บัญชีเรียบร้อยแล้ว`);
+      if (errors.length) toast.error(`${actionLabel}ไม่สำเร็จ ${errors.length} บัญชี กรุณาตรวจสอบรายละเอียด`);
+      await fetchUsers(result.page, appliedQ, appliedRole);
+      return true;
+    } finally { bulkInFlight.current = false; setBulkDisabling(false); }
+  }
+
+  function confirmBulkStatus(isActive: boolean) {
+    setSaveError(null);
+    const targets = selectedUsers.filter((user) => user.isActive !== isActive);
+    if (!targets.length) return;
+    const actionLabel = isActive ? "เปิดใช้งาน" : "ปิดใช้งาน";
+    setConfirmConfig({
+      title: `ยืนยัน${actionLabel}ผู้ใช้ ${targets.length} บัญชี`,
+      description: `${isActive ? "ผู้ใช้ที่เลือกจะกลับมาเข้าสู่ระบบได้อีกครั้ง" : "ผู้ใช้ที่เลือกจะไม่สามารถเข้าสู่ระบบได้จนกว่าจะเปิดใช้งานอีกครั้ง"}\n${targets.slice(0, 8).map((user) => user.username).join(", ")}${targets.length > 8 ? ` และอีก ${targets.length - 8} บัญชี` : ""}`,
+      action: () => updateSelectedUsers(targets, isActive),
+    });
+    setConfirmOpen(true);
+  }
 
   const [editing, setEditing] = useState<UserDto | null>(null);
   const [edit, setEdit] = useState<EditState | null>(null);
@@ -120,6 +182,7 @@ export function UsersTable({
         return;
       }
       setResult(json.data);
+      setSelectedUsers((current) => current.map((selected) => (json.data as UserListResult).items.find((user) => user.id === selected.id) ?? selected));
     } catch {
       toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
     } finally {
@@ -283,7 +346,7 @@ export function UsersTable({
           >
             <div className="flex-1 space-y-1.5">
               <Label htmlFor="search-q" className="text-xs">
-                ค้นหาผู้ใช้งาน
+                ค้นหาชื่อหรือรหัสนิสิต
               </Label>
               <div className="relative">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -314,7 +377,7 @@ export function UsersTable({
                 ))}
               </select>
             </div>
-            <Button type="submit" disabled={loading} className="gap-2">
+            <Button type="submit" disabled={loading || bulkDisabling} className="gap-2">
               <Search className="h-4 w-4" />
               ค้นหา
             </Button>
@@ -330,11 +393,33 @@ export function UsersTable({
           <CardDescription className="text-xs">
             หน้า {result.page} จาก {result.totalPages}
           </CardDescription>
+          <div className="mt-3 flex flex-wrap items-center gap-3 pb-2">
+            <Button variant="outline" size="sm" disabled={loading || bulkDisabling || !selectableUsers.length} onClick={() => {
+              setSelectedUsers((current) => allVisibleSelected
+                ? current.filter((user) => !selectableUsers.some((visible) => visible.id === user.id))
+                : [...current, ...selectableUsers.filter((user) => !current.some((selected) => selected.id === user.id))]);
+              setBulkErrors([]);
+            }}>{allVisibleSelected ? "ยกเลิกเลือกทั้งหมดในหน้านี้" : "เลือกทั้งหมดในหน้านี้"}</Button>
+            <span className="text-sm text-muted-foreground">เลือกแล้ว {selectedUsers.length} บัญชี (เลือกข้ามหน้าได้)</span>
+            <Button variant="outline" size="sm" disabled={!selectedUsers.some((user) => !user.isActive) || loading || bulkDisabling || saving || deleting} onClick={() => confirmBulkStatus(true)}>
+              <UserCheck className="mr-1 size-4" />เปิดใช้งานที่เลือก
+            </Button>
+            <Button variant="destructive" size="sm" disabled={!selectedUsers.some((user) => user.isActive) || loading || bulkDisabling || saving || deleting} onClick={() => confirmBulkStatus(false)}>
+              <UserX className="mr-1 size-4" />ปิดใช้งานที่เลือก
+            </Button>
+            {bulkDisabling && <span role="status" className="text-sm text-muted-foreground">กำลังดำเนินการ...</span>}
+            {selectedUsers.length > 0 && <Button variant="ghost" size="sm" disabled={bulkDisabling} onClick={() => { setSelectedUsers([]); setBulkErrors([]); }}>ล้างการเลือก</Button>}
+          </div>
+          {bulkErrors.length > 0 && <div role="alert" className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+            <p className="font-medium">บัญชีที่เปลี่ยนสถานะไม่สำเร็จ</p>
+            <ul className="mt-1 list-inside list-disc">{bulkErrors.map((message, index) => <li key={index}>{message}</li>)}</ul>
+          </div>}
         </CardHeader>
         <CardContent className="p-0 pt-3">
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>เลือก</TableHead>
                 <TableHead>ชื่อ-นามสกุล / รหัสนิสิต</TableHead>
                 <TableHead>บัญชีผู้ใช้</TableHead>
                 <TableHead>บทบาท</TableHead>
@@ -346,7 +431,7 @@ export function UsersTable({
               {result.items.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
                     className="h-28 text-center text-muted-foreground"
                   >
                     ไม่พบผู้ใช้งานที่ตรงตามเงื่อนไข
@@ -355,6 +440,11 @@ export function UsersTable({
               )}
               {result.items.map((user) => (
                 <TableRow key={user.id}>
+                  <TableCell>
+                    <input type="checkbox" aria-label={`เลือกผู้ใช้ ${user.username}`} checked={selectedUsers.some((selected) => selected.id === user.id)}
+                      disabled={loading || bulkDisabling || Boolean(disableLockReason(user))} title={disableLockReason(user) ?? "เลือกเพื่อเปิดหรือปิดใช้งาน"}
+                      onChange={() => toggleUser(user)} className="size-4 rounded border-input accent-primary" />
+                  </TableCell>
                   <TableCell>
                     <div className="font-semibold text-foreground">
                       {[user.firstname, user.lastname]
@@ -413,19 +503,19 @@ export function UsersTable({
                       variant="outline"
                       size="sm"
                       onClick={() => openEdit(user)}
-                      disabled={deleting || saving}
+                      disabled={deleting || saving || bulkDisabling}
                     >
                       <Pencil className="mr-1 h-3.5 w-3.5" />
                       แก้ไข
                     </Button>
                     {canResetPasswords && user.roles.length === 1 && (user.roles[0] === ROLES.STUDENT || user.roles[0] === ROLES.ORGANIZER) && (
-                      <Button variant="outline" size="sm" disabled={deleting || saving || loading} aria-label={`เปลี่ยนรหัสผ่าน ${user.username}`} onClick={() => setPasswordTarget(user)}>
+                      <Button variant="outline" size="sm" disabled={deleting || saving || loading || bulkDisabling} aria-label={`เปลี่ยนรหัสผ่าน ${user.username}`} onClick={() => setPasswordTarget(user)}>
                         <KeyRound className="size-3.5" />รหัสผ่าน
                       </Button>
                     )}
                     {canDeleteUsers && (
                       <Button variant="destructive" size="sm" aria-label={`ลบผู้ใช้ ${user.username}`}
-                        disabled={user.id === currentUserId || deleting || saving || loading}
+                        disabled={user.id === currentUserId || deleting || saving || loading || bulkDisabling}
                         title={user.id === currentUserId ? "ไม่สามารถลบบัญชีที่กำลังใช้งานอยู่ได้" : "ลบผู้ใช้งาน"}
                         onClick={() => { setDeleteError(null); setDeleteTarget(user); }}>
                         <Trash2 className="size-3.5" />ลบ
@@ -450,7 +540,7 @@ export function UsersTable({
             <Button
               variant="outline"
               size="sm"
-              disabled={result.page <= 1 || loading}
+              disabled={result.page <= 1 || loading || bulkDisabling}
               onClick={() => goToPage(result.page - 1)}
               className="gap-1"
             >
@@ -460,7 +550,7 @@ export function UsersTable({
             <Button
               variant="outline"
               size="sm"
-              disabled={result.page >= result.totalPages || loading}
+              disabled={result.page >= result.totalPages || loading || bulkDisabling}
               onClick={() => goToPage(result.page + 1)}
               className="gap-1"
             >
@@ -595,7 +685,7 @@ export function UsersTable({
         </>}
         confirmText="ยืนยันบันทึก"
         variant="destructive"
-        loading={saving}
+        loading={saving || bulkDisabling}
         onConfirm={confirmConfig.action}
       />
     </div>

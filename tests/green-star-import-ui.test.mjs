@@ -101,3 +101,25 @@ test("activity import confirms immediate stars; closed years and invalid files c
   assert.equal(requests, 1);
   assert.match(text(invalid.render()), /กรุณาเลือกไฟล์ Excel/);
 });
+
+test("participant Excel import uses its activity endpoint and yellow-star confirmation without a work-description field", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (url, options) => {
+    calls.push({ url, options });
+    return Response.json({ data: options.method === "POST" ? { rows: previewRows } : { imported: 1, awarded: 0 } });
+  });
+  const ui = setup({ mode: "participants", academicYearId: "2", activityId: "4" });
+  await preview(ui);
+  assert.equal(nodes(ui.render()).some((node) => node.type === "textarea"), false);
+  nodes(ui.render()).find((node) => node.type === "Button" && text(node) === "นำเข้าและให้ดาวสีเหลือง 1 คน").props.onClick();
+  const confirmation = nodes(ui.render()).find((node) => node.type === "ConfirmDialog");
+  assert.match(confirmation.props.description, /เช็คอินและให้ 1 ดาวสีเหลืองทันที/);
+  assert.equal(await confirmation.props.onConfirm(), true);
+  assert.ok(calls.every((call) => call.url === "/api/activities/4/participants/import"));
+  assert.equal(calls[0].options.body.get("activityId"), "4");
+  const body = JSON.parse(calls[1].options.body);
+  assert.deepEqual(body.studentCodes, ["001234"]);
+  assert.equal(body.target.mode, "participants");
+  assert.match(text(ui.render()), /ให้ดาวสีเหลือง 0 คนแล้ว/);
+  assert.match(text(ui.render()), /ครบเพดานรายปี/);
+});

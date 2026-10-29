@@ -84,7 +84,7 @@ export const activityCreateSchema = z
     location: z.string().trim().max(191).nullable().optional(),
     startsAt: dateTime,
     endsAt: dateTime,
-    minMinutes: z.coerce.number().int().min(1).max(1440).optional(),
+    minMinutes: z.never().optional(),
     academicYearId: z.string().trim().min(1).optional(),
   })
   .refine((value) => new Date(value.startsAt) < new Date(value.endsAt), {
@@ -98,13 +98,13 @@ export const activityUpdateSchema = z.object({
   location: z.string().trim().max(191).nullable().optional(),
   startsAt: dateTime.optional(),
   endsAt: dateTime.optional(),
-  minMinutes: z.coerce.number().int().min(1).max(1440).optional(),
+  minMinutes: z.never().optional(),
   status: activityStatusEnum.optional(),
 });
 
 export const qrSessionCreateSchema = z.object({
   activityId: z.string().trim().min(1, "ไม่พบกิจกรรม"),
-  purpose: z.enum(["CHECK_IN", "CHECK_OUT"]),
+  purpose: z.literal("CHECK_IN").default("CHECK_IN"),
   ttlMinutes: z.coerce.number().int().min(1).max(240).optional(),
 });
 
@@ -115,22 +115,22 @@ export const attendanceScanSchema = z.object({
 
 export const attendanceManualSchema = z.object({
   participationId: z.string().trim().min(1, "ไม่พบผู้เข้าร่วม"),
-  eventType: z.enum(["CHECK_IN", "CHECK_OUT"]),
+  eventType: z.literal("CHECK_IN"),
   occurredAt: dateTime.optional(),
 });
 
 export const bulkParticipantSchema = z.object({
   userIds: z
-    .array(z.string().trim().min(1))
-    .min(1, "กรุณาเลือกรายชื่ออย่างน้อย 1 คน"),
+    .array(positiveDatabaseId)
+    .min(1, "กรุณาเลือกรายชื่ออย่างน้อย 1 คน").max(500, "เพิ่มผู้เข้าร่วมได้สูงสุด 500 คนต่อครั้ง"),
+  requestId: z.uuid().optional(),
 });
 
 export const bulkAttendanceSchema = z
   .object({
     checkInAt: dateTime.optional(),
-    checkOutAt: dateTime.optional(),
   })
-  .refine((value) => Boolean(value.checkInAt || value.checkOutAt), {
+  .refine((value) => Boolean(value.checkInAt), {
     message: "กรุณาระบุเวลาอย่างน้อยหนึ่งรายการ",
   });
 

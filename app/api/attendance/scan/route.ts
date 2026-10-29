@@ -6,10 +6,11 @@ import { errorResponse, successResponse } from "@/lib/api";
 import { hashQrToken } from "@/lib/qr";
 import { AttendanceError, recordAttendance } from "@/lib/attendance";
 import { toAttendanceDto } from "@/lib/participations";
+import { scheduleAttendanceReview } from "@/lib/attendance-worker";
 
 async function findQrSession(token: string) {
   return prisma.qrSession.findFirst({
-    where: { tokenHash: hashQrToken(token), revokedAt: null, expiresAt: { gt: new Date() } },
+    where: { tokenHash: hashQrToken(token), purpose: "CHECK_IN", revokedAt: null, expiresAt: { gt: new Date() } },
     include: { activity: { select: { id: true, title: true, status: true, academicYearId: true, academicYear: { select: { status: true } } } } },
   });
 }
@@ -93,6 +94,7 @@ export async function POST(req: Request) {
       method: "QR",
       occurredAt: new Date(),
       recordedBy: userId,
+      qrSessionId: session.id,
     });
   } catch (error) {
     if (error instanceof AttendanceError) {
@@ -103,6 +105,7 @@ export async function POST(req: Request) {
     return errorResponse("บันทึกเวลาและดาวไม่สำเร็จ กรุณาลองใหม่", 500);
   }
 
+  scheduleAttendanceReview(session.expiresAt);
   return successResponse(
     { ...toAttendanceDto(result.record), activityId: String(session.activityId), evaluation: result.evaluation },
     201,
