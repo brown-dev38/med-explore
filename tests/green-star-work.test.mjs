@@ -12,14 +12,21 @@ function service({ student = true, authorized = true, yearStatus = "ACTIVE", fai
   let queue = Promise.resolve();
   const tx = {
     $queryRaw: async (sql, actorId) => { state.calls.push({ type: "lock", actorId, sql: sql.join("?") }); },
-    user: { findFirst: async ({ where }) => where.id === 7n ? authorized ? { id: 7n } : null : student ? { id: 42n } : null },
+    user: {
+      findFirst: async ({ where }) => where.id === 7n ? authorized ? { id: 7n } : null : student ? { id: 42n } : null,
+      findMany: async (query) => {
+        state.calls.push({ type: "students", query });
+        return (student ? [42n, 43n] : [42n]).filter((id) => query.where.id.in.includes(id)).map((id) => ({ id }));
+      },
+    },
     academicYear: { findUnique: async () => yearStatus ? { id: 2n, status: yearStatus } : null },
     auditLog: {
-      findFirst: async ({ where }) => state.receipts.find((entry) => entry.actorId === where.actorId && entry.details.requestId === where.details.equals) ?? null,
+      findFirst: async ({ where }) => state.receipts.find((entry) => entry.actorId === where.actorId && entry.action === where.action && entry.details.requestId === where.details.equals) ?? null,
       create: async ({ data }) => { if (failAudit) throw new Error("AUDIT_FAILED"); state.receipts.push(data); },
     },
     starTransaction: {
       create: async ({ data }) => { const created = { id: BigInt(state.stars.length + 1), ...data }; state.stars.push(created); return created; },
+      createMany: async ({ data }) => { state.stars.push(...data); return { count: data.length }; },
       findUnique: async ({ where }) => state.stars.find((star) => star.id === where.id) ?? null,
     },
   };
@@ -122,4 +129,110 @@ test("standalone history stays within its year and excludes activity-linked star
     assert.equal(where.helperAssignmentId, null);
     assert.equal(where.participationId, null);
   }
+});
+
+const bulkInput = { userIds: ["42", "43"], academicYearId: input.academicYearId, description: input.description, requestId: input.requestId };
+
+test("a group award gives each selected student one star and simultaneous retries never award twice", async () => {
+  const api = service();
+  const results = await Promise.all([
+    api.awardStandaloneGreenStars({ ...bulkInput, userIds: ["42", "43", "42"] }, 7n),
+    api.awardStandaloneGreenStars({ ...bulkInput, userIds: ["43", "42"] }, 7n),
+  ]);
+  assert.deepEqual(results, [{ awarded: 2, replayed: false }, { awarded: 2, replayed: true }]);
+  assert.equal(api.state.stars.length, 2);
+  assert.equal(api.state.receipts.length, 1);
+  assert.deepEqual(api.state.stars.map((star) => star.userId), [42n, 43n]);
+  for (const star of api.state.stars) {
+    assert.equal(star.points, 1);
+    assert.equal(star.starType, "GREEN");
+    assert.equal(star.academicYearId, 2n);
+    assert.equal(star.approvedBy, 7n);
+    assert.equal(star.reason, input.description);
+  }
+  const query = api.state.calls.find((call) => call.type === "students").query;
+  assert.equal(query.where.isActive, true);
+  assert.deepEqual(query.where.userRoles, { some: { role: { name: "STUDENT" } } });
+  for (const changes of [{ description: "Different work" }, { userIds: ["42"] }, { academicYearId: "3" }]) {
+    await assert.rejects(api.awardStandaloneGreenStars({ ...bulkInput, ...changes }, 7n), (error) => error.status === 409);
+  }
+  assert.equal(api.state.stars.length, 2);
+});
+
+test("group awards write nothing when a student is unavailable, the year is closed, access is revoked or audit fails", async () => {
+  for (const [options, status] of [[{ student: false }, 409], [{ yearStatus: "CLOSED" }, 409], [{ yearStatus: null }, 404], [{ authorized: false }, 403], [{ failAudit: true }, null]]) {
+    const api = service(options);
+    await assert.rejects(api.awardStandaloneGreenStars(bulkInput, 7n), (error) => status ? error.status === status : error.message === "AUDIT_FAILED");
+    assert.equal(api.state.stars.length, 0);
+    assert.equal(api.state.receipts.length, 0);
+  }
+});
+
+test("bulk API checks staff access, validates every ID and ignores client-supplied star points", async () => {
+  for (const role of ["ADMIN", "ORGANIZER", "STUDENT", "UNKNOWN", null]) {
+    const calls = [];
+    const route = loadTypeScript("../app/api/green-stars/route.ts", {
+      "@/lib/dal": { getCurrentUser: async () => role ? actor(role) : null },
+      "@/lib/permissions": permissions, "@/lib/validation": validation, "@/lib/api": loadTypeScript("../lib/api.ts"),
+      "@/lib/green-star-work": { GreenStarWorkError: class extends Error {}, awardStandaloneGreenStars: async (...args) => { calls.push(args); return { awarded: 2, replayed: false }; } },
+    });
+    const response = await route.POST(new Request("https://example.test/api/green-stars", { method: "POST", body: JSON.stringify({ ...bulkInput, userIds: ["42", "43", "42"], points: 999, approvedBy: "999" }) }));
+    assert.equal(response.status, !role ? 401 : ["ADMIN", "ORGANIZER"].includes(role) ? 201 : 403);
+    if (calls.length) assert.deepEqual(calls[0], [bulkInput, 7n]);
+  }
+  for (const userIds of [[], ["42", "invalid"], ["0"], ["01"], ["-1"], ["9223372036854775808"], Array(501).fill("42")]) {
+    assert.equal(validation.greenWorkBulkAwardSchema.safeParse({ ...bulkInput, userIds }).success, false);
+  }
+});
+
+test("initial candidates and search results include only active students and preserve student-code ordering", async () => {
+  const calls = [];
+  const api = loadTypeScript("../lib/green-star-work.ts", {
+    "server-only": {}, "@/lib/prisma": { prisma: { user: { findMany: async (query) => {
+      calls.push(query);
+      return [{ id: 42n, firstname: "Student", lastname: "Name", username: "student42", studentCode: "001234" }];
+    } } } },
+  });
+  assert.deepEqual(await api.getStandaloneGreenStarCandidates(), [{ id: "42", name: "Student Name", studentCode: "001234" }]);
+  await api.getStandaloneGreenStarCandidates("Student");
+  for (const query of calls) {
+    assert.equal(query.where.isActive, true);
+    assert.deepEqual(query.where.userRoles, { some: { role: { name: "STUDENT" } } });
+    assert.equal(query.take, 100);
+    assert.deepEqual(query.orderBy, [{ studentCode: "asc" }, { id: "asc" }]);
+  }
+  assert.equal(calls[0].where.OR, undefined);
+  assert.ok(calls[1].where.OR.some((filter) => filter.studentCode?.contains === "Student"));
+});
+
+test("history page sizes select the correct records and clamp the final and empty pages", async () => {
+  const calls = [];
+  let total = 53;
+  const api = loadTypeScript("../lib/green-star-work.ts", {
+    "server-only": {}, "@/lib/prisma": { prisma: { starTransaction: {
+      count: async () => total,
+      findMany: async (query) => { calls.push(query); return []; },
+    } } },
+  });
+  for (const [size, expectedPage, expectedSkip] of [[10, 6, 50], [20, 3, 40], [50, 2, 50], [100, 1, 0]]) {
+    const result = await api.getStandaloneGreenStarRecords("2", "Student", 999, size);
+    assert.equal(result.pageSize, size);
+    assert.equal(result.page, expectedPage);
+    assert.equal(result.totalPages, expectedPage);
+    assert.equal(calls.at(-1).skip, expectedSkip);
+    assert.equal(calls.at(-1).take, size);
+    assert.equal(calls.at(-1).where.academicYearId, 2n);
+    assert.ok(calls.at(-1).where.OR.some((filter) => filter.reason?.contains === "Student"));
+  }
+  for (const invalid of [0, -1, 15, 1000, NaN, Infinity]) {
+    const result = await api.getStandaloneGreenStarRecords("2", "", 2, invalid);
+    assert.equal(result.pageSize, 20);
+    assert.equal(calls.at(-1).skip, 20);
+    assert.equal(calls.at(-1).take, 20);
+  }
+  total = 0;
+  const empty = await api.getStandaloneGreenStarRecords("2", "", 999, 10);
+  assert.equal(empty.page, 1);
+  assert.equal(empty.totalPages, 1);
+  assert.equal(calls.at(-1).skip, 0);
 });

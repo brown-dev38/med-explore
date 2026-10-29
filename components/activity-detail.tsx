@@ -15,9 +15,6 @@ import {
   XCircle,
   Copy,
   Pencil,
-  Sparkles,
-  Award,
-  Trash2,
   Star,
   Calculator,
   AlertCircle,
@@ -28,7 +25,6 @@ import type {
   ActivityDto,
   ActivityStatus,
   AttendanceEvent,
-  HelperAssignmentDto,
   ParticipationDto,
   QrPurpose,
   QrSessionDto,
@@ -94,15 +90,12 @@ function formatRemaining(totalSeconds: number): string {
 export function ActivityDetail({
   activity,
   participants,
-  initialHelpers = [],
 }: {
   activity: ActivityDto;
   participants: ParticipationDto[];
-  initialHelpers?: HelperAssignmentDto[];
 }) {
   const [status, setStatus] = useState<ActivityStatus>(activity.status);
   const { data: rows, refresh: refreshParticipants, failed: participantsRefreshFailed } = useLiveActivityData(`/api/activities/${activity.id}/participations`, participants, 5000);
-  const [helpers, setHelpers] = useState<HelperAssignmentDto[]>(initialHelpers);
   const [purpose, setPurpose] = useState<QrPurpose>("CHECK_IN");
   const [ttl, setTtl] = useState("15");
   const [qr, setQr] = useState<QrSessionDto | null>(null);
@@ -130,14 +123,6 @@ export function ActivityDetail({
     value: string;
   } | null>(null);
   const [savingTime, setSavingTime] = useState(false);
-
-  // Modal Dialogs for Helpers
-  const [addHelperOpen, setAddHelperOpen] = useState(false);
-  const [helperQuery, setHelperQuery] = useState("");
-  const [helperCandidates, setHelperCandidates] = useState<Candidate[]>([]);
-  const [selectedHelperUserId, setSelectedHelperUserId] = useState<string>("");
-  const [helperDuty, setHelperDuty] = useState("");
-  const [searchingHelperCandidates, setSearchingHelperCandidates] = useState(false);
 
   // Confirm Dialog
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -220,17 +205,6 @@ export function ActivityDetail({
       toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
     } finally {
       setRecalculating(false);
-    }
-  }
-
-  async function reloadHelpers(silent = false) {
-    const res = await fetch(`/api/activities/${activity.id}/helpers`);
-    if (res.ok) {
-      const json = await res.json();
-      setHelpers(json.data);
-      if (!silent) {
-        toast.success("อัปเดตข้อมูลนิสิตช่วยงานแล้ว");
-      }
     }
   }
 
@@ -496,173 +470,6 @@ export function ActivityDetail({
     }
   }
 
-  // --- Helper & Green Star Logic ---
-  async function loadHelperCandidates(query?: string) {
-    setSearchingHelperCandidates(true);
-    try {
-      const q = (query !== undefined ? query : helperQuery).trim();
-      const res = await fetch(
-        `/api/activities/${activity.id}/helpers/candidates${
-          q ? `?q=${encodeURIComponent(q)}` : ""
-        }`,
-      );
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(json.message ?? "ค้นหาไม่สำเร็จ");
-        return;
-      }
-      setHelperCandidates(json.data);
-    } catch {
-      toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
-    } finally {
-      setSearchingHelperCandidates(false);
-    }
-  }
-
-  function openAddHelperModal() {
-    setAddHelperOpen(true);
-    setSelectedHelperUserId("");
-    setHelperDuty("");
-    void loadHelperCandidates("");
-  }
-
-  async function handleAssignHelper(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!selectedHelperUserId) {
-      toast.error("กรุณาเลือกนิสิตที่จะมอบหมาย");
-      return;
-    }
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/activities/${activity.id}/helpers`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: selectedHelperUserId,
-          description: helperDuty.trim() || null,
-        }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(json.message || json.error || "มอบหมายผู้ช่วยงานไม่สำเร็จ");
-        return;
-      }
-      toast.success("มอบหมายนิสิตช่วยงานเรียบร้อยแล้ว");
-      setAddHelperOpen(false);
-      await reloadHelpers(true);
-      notifyActivityUpdate();
-    } catch {
-      toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function promptCompleteHelper(helper: HelperAssignmentDto) {
-    setConfirmConfig({
-      title: `ยืนยันการช่วยงาน & มอบ 1 ดาวสีเขียว 💚`,
-      description: `คุณกำลังจะยืนยันว่า ${helper.userName} ได้มาช่วยเหลือกิจกรรมนี้จริง และระบบจะมอบ "1 ดาวสีเขียว" ให้กับนิสิตทันที\n\nยืนยันการให้ดาวหรือไม่?`,
-      confirmText: "ยืนยัน & มอบดาวเขียว",
-      variant: "default",
-      action: async () => {
-        setBusy(true);
-        try {
-          const res = await fetch(
-            `/api/activities/${activity.id}/helpers/${helper.id}`,
-            {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ status: "COMPLETED" }),
-            },
-          );
-          const json = await res.json().catch(() => ({}));
-          if (!res.ok) {
-            toast.error(json.message || json.error || "อัปเดตไม่สำเร็จ");
-            return;
-          }
-          toast.success(
-            `ยืนยันการช่วยงานและมอบ 1 ดาวสีเขียวให้ ${helper.userName} เรียบร้อยแล้ว`,
-          );
-          await reloadHelpers(true);
-          notifyActivityUpdate();
-        } catch {
-          toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
-        } finally {
-          setBusy(false);
-        }
-      },
-    });
-    setConfirmOpen(true);
-  }
-
-  function promptCancelHelper(helper: HelperAssignmentDto) {
-    setConfirmConfig({
-      title: `ยกเลิกการช่วยงาน: ${helper.userName}`,
-      description:
-        "หากนิสิตเคยได้รับดาวสีเขียวไปแล้ว การยกเลิกนี้จะทำการถอดดาวสีเขียวออกโดยอัตโนมัติ คุณต้องการดำเนินการต่อหรือไม่?",
-      confirmText: "ยกเลิกการช่วยงาน",
-      variant: "destructive",
-      action: async () => {
-        setBusy(true);
-        try {
-          const res = await fetch(
-            `/api/activities/${activity.id}/helpers/${helper.id}`,
-            {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ status: "CANCELLED" }),
-            },
-          );
-          const json = await res.json().catch(() => ({}));
-          if (!res.ok) {
-            toast.error(json.message || json.error || "อัปเดตไม่สำเร็จ");
-            return;
-          }
-          toast.success(`ยกเลิกการช่วยงานของ ${helper.userName} แล้ว`);
-          await reloadHelpers(true);
-          notifyActivityUpdate();
-        } catch {
-          toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
-        } finally {
-          setBusy(false);
-        }
-      },
-    });
-    setConfirmOpen(true);
-  }
-
-  function promptDeleteHelper(helper: HelperAssignmentDto) {
-    setConfirmConfig({
-      title: `ลบรายชื่อผู้ช่วยงาน: ${helper.userName}`,
-      description:
-        "คุณต้องการลบรายชื่อนิสิตช่วยงานคนนี้ออกจากกิจกรรมใช่หรือไม่? (การกระทำนี้ไม่สามารถย้อนกลับได้)",
-      confirmText: "ลบผู้ช่วยงาน",
-      variant: "destructive",
-      action: async () => {
-        setBusy(true);
-        try {
-          const res = await fetch(
-            `/api/activities/${activity.id}/helpers/${helper.id}`,
-            { method: "DELETE" },
-          );
-          const json = await res.json().catch(() => ({}));
-          if (!res.ok) {
-            toast.error(json.message || json.error || "ลบไม่สำเร็จ");
-            return;
-          }
-          toast.success(`ลบรายชื่อ ${helper.userName} เรียบร้อยแล้ว`);
-          await reloadHelpers(true);
-          notifyActivityUpdate();
-        } catch {
-          toast.error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
-        } finally {
-          setBusy(false);
-        }
-      },
-    });
-    setConfirmOpen(true);
-  }
-
   const copyQrLink = () => {
     if (!qr) return;
     void navigator.clipboard.writeText(qr.scanUrl);
@@ -674,10 +481,6 @@ export function ActivityDetail({
     void navigator.clipboard.writeText(qr.token);
     toast.success("คัดลอกรหัส Token แล้ว");
   };
-
-  const completedHelpersCount = helpers.filter(
-    (h) => h.status === "COMPLETED",
-  ).length;
 
   return (
     <div className="space-y-6">
@@ -891,7 +694,7 @@ export function ActivityDetail({
         </CardContent>
       </Card>
 
-      {/* Tabs สำหรับ ผู้ลงทะเบียนทั่วไป (ดาวเหลือง) vs นิสิตช่วยงาน (ดาวเขียว) */}
+      {/* ผู้ลงทะเบียนทั่วไป (ดาวเหลือง) */}
       <Tabs defaultValue="participants" className="w-full">
         <TabsList className="mb-4">
           <TabsTrigger value="participants" className="gap-2">
@@ -899,13 +702,6 @@ export function ActivityDetail({
             <span>ผู้ลงทะเบียนทั่วไป</span>
             <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0">
               {rows.length}
-            </Badge>
-          </TabsTrigger>
-          <TabsTrigger value="helpers" className="gap-2">
-            <Award className="h-4 w-4 text-emerald-600" />
-            <span>นิสิตช่วยงาน (ดาวสีเขียว)</span>
-            <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
-              {helpers.length}
             </Badge>
           </TabsTrigger>
         </TabsList>
@@ -1183,295 +979,7 @@ export function ActivityDetail({
             </CardContent>
           </Card>
         </TabsContent>
-
-        {/* Tab 2: นิสิตช่วยงาน (ดาวเขียว) */}
-        <TabsContent value="helpers">
-          <Card>
-            <CardHeader className="p-6 pb-2">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Award className="h-5 w-5 text-emerald-600" />
-                    <CardTitle className="text-lg font-semibold">
-                      นิสิตช่วยงานกิจกรรม ({helpers.length} คน)
-                    </CardTitle>
-                  </div>
-                  <CardDescription className="text-xs mt-1">
-                    นิสิตที่มาช่วยงานจะได้รับ <strong>1 ดาวสีเขียว</strong> เมื่อผู้จัดกดยืนยันการช่วยงาน
-                    (ช่วยงานสำเร็จ {completedHelpersCount} คน)
-                  </CardDescription>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    onClick={openAddHelperModal}
-                    className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
-                    size="sm"
-                  >
-                    <UserPlus className="h-3.5 w-3.5" />
-                    มอบหมายนิสิตช่วยงาน
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => void reloadHelpers()}
-                    className="gap-1.5"
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    รีเฟรช
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0 pt-2">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>ชื่อ-นามสกุล</TableHead>
-                    <TableHead>รหัสนิสิต</TableHead>
-                    <TableHead>หน้าที่ / รายละเอียด</TableHead>
-                    <TableHead>สถานะการช่วยงาน</TableHead>
-                    <TableHead>ดาวสีเขียว</TableHead>
-                    <TableHead className="text-right">การจัดการ</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {helpers.length === 0 && (
-                    <TableRow>
-                      <TableCell
-                        colSpan={6}
-                        className="h-28 text-center text-muted-foreground"
-                      >
-                        ยังไม่มีนิสิตช่วยงานในกิจกรรมนี้ กดปุ่ม &ldquo;มอบหมายนิสิตช่วยงาน&rdquo; เพื่อเพิ่มรายชื่อ
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  {helpers.map((helper) => (
-                    <TableRow key={helper.id}>
-                      <TableCell className="font-semibold text-foreground">
-                        {helper.userName}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-xs">
-                        {helper.studentCode ?? "-"}
-                      </TableCell>
-                      <TableCell className="text-xs text-foreground max-w-xs truncate">
-                        {helper.description || (
-                          <span className="text-muted-foreground">
-                            ผู้ช่วยงานทั่วไป
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {helper.status === "ASSIGNED" && (
-                          <Badge variant="secondary" className="text-xs">
-                            กำลังช่วยงาน
-                          </Badge>
-                        )}
-                        {helper.status === "COMPLETED" && (
-                          <Badge
-                            variant="default"
-                            className="bg-emerald-600 hover:bg-emerald-700 text-xs gap-1"
-                          >
-                            <CheckCircle2 className="h-3 w-3" />
-                            ช่วยงานสำเร็จ
-                          </Badge>
-                        )}
-                        {helper.status === "CANCELLED" && (
-                          <Badge variant="destructive" className="text-xs">
-                            ยกเลิก
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {helper.greenStarAwarded ? (
-                          <span className="inline-flex items-center gap-1 font-semibold text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
-                            <span>💚</span>
-                            <span>ได้รับ 1 ดาวเขียว</span>
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">
-                            รอยืนยันการช่วยงาน
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex flex-wrap justify-end gap-1.5">
-                          {helper.status === "ASSIGNED" && (
-                            <>
-                              <Button
-                                size="sm"
-                                onClick={() => promptCompleteHelper(helper)}
-                                disabled={busy}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 text-xs"
-                              >
-                                <Sparkles className="h-3 w-3" />
-                                ยืนยัน & ให้ดาวเขียว
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => promptCancelHelper(helper)}
-                                disabled={busy}
-                                className="text-xs"
-                              >
-                                ยกเลิก
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => promptDeleteHelper(helper)}
-                                disabled={busy}
-                                className="text-destructive hover:text-destructive hover:bg-destructive/10 text-xs"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </>
-                          )}
-                          {helper.status === "COMPLETED" && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => promptCancelHelper(helper)}
-                              disabled={busy}
-                              className="text-xs"
-                            >
-                              ยกเลิกการให้ดาว
-                            </Button>
-                          )}
-                          {helper.status === "CANCELLED" && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => promptDeleteHelper(helper)}
-                              disabled={busy}
-                              className="text-destructive text-xs"
-                            >
-                              <Trash2 className="mr-1 h-3.5 w-3.5" />
-                              ลบ
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
-
-      {/* Modal มอบหมายนิสิตช่วยงาน (Helper Modal) */}
-      <Dialog open={addHelperOpen} onOpenChange={setAddHelperOpen}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Award className="h-5 w-5 text-emerald-600" />
-              <span>มอบหมายนิสิตช่วยกิจกรรม</span>
-            </DialogTitle>
-            <DialogDescription>
-              ค้นหานิสิตที่เข้ามาช่วยเหลือกิจกรรม และระบุหน้าที่รับผิดชอบ
-            </DialogDescription>
-          </DialogHeader>
-
-          <form onSubmit={handleAssignHelper} className="space-y-4">
-            <div className="space-y-1.5">
-              <Label className="text-xs">ค้นหานิสิต</Label>
-              <div className="flex gap-2">
-                <Input
-                  value={helperQuery}
-                  onChange={(e) => setHelperQuery(e.target.value)}
-                  placeholder="ค้นหาชื่อผู้ใช้, รหัสนิสิต หรือชื่อ-นามสกุล..."
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      void loadHelperCandidates();
-                    }
-                  }}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => void loadHelperCandidates()}
-                  disabled={searchingHelperCandidates}
-                >
-                  ค้นหา
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs">
-                เลือกนิสิตที่จะมอบหมาย ({helperCandidates.length} คน)
-              </Label>
-              <div className="max-h-48 overflow-y-auto rounded-lg border divide-y">
-                {helperCandidates.length === 0 ? (
-                  <div className="p-4 text-center text-xs text-muted-foreground">
-                    {searchingHelperCandidates
-                      ? "กำลังค้นหารายชื่อ..."
-                      : "ไม่พบรายชื่อนิสิต"}
-                  </div>
-                ) : (
-                  helperCandidates.map((c) => {
-                    const isSelected = selectedHelperUserId === c.id;
-                    return (
-                      <div
-                        key={c.id}
-                        onClick={() => setSelectedHelperUserId(c.id)}
-                        className={`flex items-center justify-between p-2.5 text-xs cursor-pointer transition-colors ${
-                          isSelected
-                            ? "bg-emerald-500/10 text-emerald-900 dark:text-emerald-200"
-                            : "hover:bg-muted/50"
-                        }`}
-                      >
-                        <div>
-                          <p className="font-semibold">{c.name}</p>
-                          <p className="text-muted-foreground">
-                            {c.studentCode ? `รหัส ${c.studentCode} · ` : ""}
-                            {c.email}
-                          </p>
-                        </div>
-                        {isSelected && (
-                          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="helper-duty" className="text-xs">
-                บทบาทหน้าที่ที่มอบหมาย (ไม่บังคับ)
-              </Label>
-              <Input
-                id="helper-duty"
-                value={helperDuty}
-                onChange={(e) => setHelperDuty(e.target.value)}
-                placeholder="เช่น ฝ่ายต้อนรับและลงทะเบียน, ฝ่ายคุมเวลา, โสตทัศนูปกรณ์..."
-              />
-            </div>
-
-            <DialogFooter className="mt-4 gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setAddHelperOpen(false)}
-                disabled={busy}
-              >
-                ยกเลิก
-              </Button>
-              <Button
-                type="submit"
-                disabled={busy || !selectedHelperUserId}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white"
-              >
-                มอบหมายผู้ช่วยงาน
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
 
       {/* Modal เพิ่มผู้เข้าร่วม (Participants Modal) */}
       <Dialog open={candidatesOpen} onOpenChange={setCandidatesOpen}>

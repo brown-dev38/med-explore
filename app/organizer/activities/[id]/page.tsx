@@ -6,7 +6,6 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { parseId } from "@/lib/api";
 import { toActivityDto } from "@/lib/activities";
 import { toParticipationDto } from "@/lib/participations";
-import { getHelpersForActivity } from "@/lib/helpers";
 import { ActivityDetail } from "@/components/activity-detail";
 
 export const metadata = {
@@ -39,20 +38,16 @@ async function ActivityDetailContent({
   const activity = await prisma.activity.findUnique({ where: { id: activityId } });
   if (!activity) notFound();
 
-  const [participations, helpers] = await Promise.all([
-    prisma.participation.findMany({
-      where: { activityId },
-      include: { user: true, attendanceRecords: true, starTransactions: true },
-      orderBy: { createdAt: "asc" },
-    }),
-    getHelpersForActivity(activityId),
-  ]);
+  const participations = await prisma.participation.findMany({
+    where: { activityId },
+    include: { user: true, attendanceRecords: true, starTransactions: true },
+    orderBy: { createdAt: "asc" },
+  });
 
   return (
     <ActivityDetail
       activity={toActivityDto(activity)}
       participants={participations.map(toParticipationDto)}
-      initialHelpers={helpers}
     />
   );
 }

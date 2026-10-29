@@ -89,12 +89,12 @@ test("a failed confirmation keeps the same request ID for retry and blocks simul
   assert.equal(puts.length, 2);
 });
 
-test("activity import explains assignment without stars; closed years and invalid files cannot import", async (t) => {
+test("activity import confirms immediate stars; closed years and invalid files cannot import", async (t) => {
   let requests = 0;
   t.mock.method(globalThis, "fetch", async () => { requests++; return Response.json({ data: { rows: previewRows } }); });
   const ui = setup(activity);
   await preview(ui);
-  assert.match(prepare(ui).props.description, /ยังไม่ให้ดาวสีเขียว/);
+  assert.match(prepare(ui).props.description, /ให้คนละ 1 ดาวสีเขียวทันที/);
   assert.equal(nodes(setup(work, true).render()).some((node) => node.type === "form"), false);
   const invalid = setup();
   await preview(invalid, "students.xls");

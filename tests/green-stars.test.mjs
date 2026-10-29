@@ -85,6 +85,9 @@ test("bulk assignment rejects malformed IDs and deduplicates valid students", as
   const handlers = routes(actor("ORGANIZER"));
   assert.equal((await handlers.assign({ userIds: ["42", "42", "43"] })).status, 201);
   assert.deepEqual(handlers.calls.find((call) => call.type === "bulk").args[1], [42n, 43n]);
+  const oversized = routes(actor("ORGANIZER"));
+  assert.equal((await oversized.assign({ userIds: Array.from({ length: 501 }, (_, index) => String(index + 1)) })).status, 400);
+  assert.ok(!oversized.calls.some((call) => call.type === "bulk"));
 });
 
 test("a helper ID from another activity cannot be changed or removed", async () => {
@@ -102,6 +105,7 @@ test("racing duplicate assignments return a conflict", async () => {
 test("candidate lookup returns only active students who are not already assigned", async () => {
   let query;
   const helpers = loadTypeScript("../lib/helpers.ts", {
+    "@/lib/helper-awards": loadTypeScript("../lib/helper-awards.ts"),
     "server-only": {}, "@/lib/audit": {},
     "@/lib/prisma": { prisma: {
       helperAssignment: { findMany: async () => [{ userId: 42n }] },
@@ -137,6 +141,7 @@ test("completion awards exactly one green star per helper in its activity's year
     },
   };
   const helpers = loadTypeScript("../lib/helpers.ts", {
+    "@/lib/helper-awards": loadTypeScript("../lib/helper-awards.ts"),
     "server-only": {}, "@/lib/audit": { recordAudit: async () => {} },
     "@/lib/prisma": { prisma: { helperAssignment: { findUnique: async () => helper }, $transaction: (fn) => fn(tx) } },
   });

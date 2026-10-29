@@ -2,6 +2,7 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { recordAudit } from "@/lib/audit";
+import { createCompletedHelpers } from "@/lib/helper-awards";
 import type {
   HelperAssignmentDto,
   StudentStarSummaryDto,
@@ -112,34 +113,33 @@ export async function assignHelper(
   assignedBy: bigint,
   description?: string | null,
 ): Promise<HelperAssignmentDto> {
-  const helper = await prisma.helperAssignment.create({
-    data: {
-      activityId,
-      userId,
-      assignedBy,
-      status: "ASSIGNED",
-      description: description?.trim() || null,
-    },
-    include: {
-      student: true,
-      activity: true,
-      starTransactions: true,
-    },
+  return helperAssignmentTransaction(async (tx) => {
+    const activity = await tx.activity.findUniqueOrThrow({ where: { id: activityId } });
+    await requireOpenHelperYear(tx, activity.academicYearId);
+    const existing = await tx.helperAssignment.findUnique({ where: { activityId_userId: { activityId, userId } } });
+    if (existing) throw Object.assign(new Error("นิสิตคนนี้ได้รับการมอบหมายเป็นผู้ช่วยงานแล้ว"), { code: "P2002" });
+    await createCompletedHelpers(tx, activity, [userId], assignedBy, description);
+    const helper = await tx.helperAssignment.findUniqueOrThrow({
+      where: { activityId_userId: { activityId, userId } },
+      include: { student: true, activity: true, starTransactions: true },
+    });
+    await tx.auditLog.create({ data: {
+      actorId: assignedBy, action: "helper.assign", entityType: "helper_assignment", entityId: helper.id,
+      details: { activityId: String(activityId), studentId: String(userId), description: description ?? null, points: 1 },
+    } });
+    return toHelperAssignmentDto(helper);
   });
+}
 
-  await recordAudit({
-    actorId: assignedBy,
-    action: "helper.assign",
-    entityType: "helper_assignment",
-    entityId: helper.id,
-    details: {
-      activityId: String(activityId),
-      studentId: String(userId),
-      description: description ?? null,
-    },
-  });
-
-  return toHelperAssignmentDto(helper);
+async function helperAssignmentTransaction<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await prisma.$transaction(fn, { isolationLevel: "Serializable", timeout: 30000 });
+    } catch (error) {
+      if ((error as { code?: string }).code === "P2034" && attempt < 2) continue;
+      throw error;
+    }
+  }
 }
 
 export async function bulkAssignHelpers(
@@ -148,48 +148,16 @@ export async function bulkAssignHelpers(
   assignedBy: bigint,
   description?: string | null,
 ): Promise<{ added: number }> {
-  // ดึงคนที่มอบหมายไปแล้ว
-  const existing = await prisma.helperAssignment.findMany({
-    where: {
-      activityId,
-      userId: { in: userIds },
-    },
-    select: { userId: true },
+  return helperAssignmentTransaction(async (tx) => {
+    const activity = await tx.activity.findUniqueOrThrow({ where: { id: activityId } });
+    await requireOpenHelperYear(tx, activity.academicYearId);
+    const result = await createCompletedHelpers(tx, activity, userIds, assignedBy, description);
+    if (result.count) await tx.auditLog.create({ data: {
+      actorId: assignedBy, action: "helper.bulk_assign", entityType: "helper_assignment", entityId: activityId,
+      details: { activityId: String(activityId), addedCount: result.count, userIds: userIds.map(String), pointsPerStudent: 1 },
+    } });
+    return { added: result.count };
   });
-  const existingSet = new Set(existing.map((h) => String(h.userId)));
-  const toAdd = userIds.filter((id) => !existingSet.has(String(id)));
-
-  if (toAdd.length === 0) {
-    return { added: 0 };
-  }
-
-  await prisma.$transaction(
-    toAdd.map((userId) =>
-      prisma.helperAssignment.create({
-        data: {
-          activityId,
-          userId,
-          assignedBy,
-          status: "ASSIGNED",
-          description: description?.trim() || null,
-        },
-      }),
-    ),
-  );
-
-  await recordAudit({
-    actorId: assignedBy,
-    action: "helper.bulk_assign",
-    entityType: "helper_assignment",
-    entityId: activityId,
-    details: {
-      activityId: String(activityId),
-      addedCount: toAdd.length,
-      userIds: toAdd.map(String),
-    },
-  });
-
-  return { added: toAdd.length };
 }
 
 export async function updateHelperStatusAndStar(

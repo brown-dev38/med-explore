@@ -4,6 +4,7 @@ import { Inter, Kanit, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { SessionGuard } from "@/components/session-guard";
 import { ActivityNavigationRefresh } from "@/components/activity-navigation-refresh";
+import { stylesheetRecoveryScript } from "@/lib/stylesheet-recovery";
 import "./globals.css";
 
 const inter = Inter({
@@ -42,6 +43,9 @@ export default function RootLayout({
       lang="th"
       className={`${inter.variable} ${kanit.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        <script id="stylesheet-recovery" dangerouslySetInnerHTML={{ __html: stylesheetRecoveryScript }} />
+      </head>
       <body className="min-h-full flex flex-col">
         {children}
         <Suspense fallback={null}><SessionGuard /></Suspense>

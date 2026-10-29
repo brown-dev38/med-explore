@@ -119,6 +119,9 @@ export async function POST(req: Request, { params }: RouteContext) {
 
     return successResponse(helper, 201);
   } catch (error) {
+    if (error instanceof Error && error.message === "ACADEMIC_YEAR_CLOSED") {
+      return errorResponse("ปีการศึกษานี้ปิดแล้ว ไม่สามารถเพิ่มงานและดาวได้", 409);
+    }
     if (error && typeof error === "object" && "code" in error && error.code === "P2002") {
       return errorResponse("นิสิตคนนี้ได้รับการมอบหมายเป็นผู้ช่วยงานแล้ว", 409);
     }

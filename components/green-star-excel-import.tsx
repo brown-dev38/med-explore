@@ -67,7 +67,7 @@ export function GreenStarExcelImport({ target, targetLabel, disabled = false, on
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message || "นำเข้าไม่สำเร็จ สามารถลองยืนยันข้อมูลเดิมอีกครั้งได้");
       const count = result.data.imported;
-      const success = work ? `นำเข้าสำเร็จ ${count} คน และให้คนละ 1 ดาวสีเขียวแล้ว` : `เพิ่มนิสิตช่วยงาน ${count} คนแล้ว รอยืนยันการช่วยงานเพื่อให้ดาวสีเขียว`;
+      const success = `นำเข้าสำเร็จ ${count} คน และให้คนละ 1 ดาวสีเขียวแล้ว`;
       setMessage(success); toast.success(success);
       setRows(null); setFile(null); setDescription(""); requestId.current = null;
       if (fileInput.current) fileInput.current.value = "";
@@ -86,7 +86,7 @@ export function GreenStarExcelImport({ target, targetLabel, disabled = false, on
   return <Card>
     <CardHeader>
       <CardTitle className="flex items-center gap-2 text-lg"><FileSpreadsheet className="size-5" />นำเข้ารายชื่อจาก Excel</CardTitle>
-      <CardDescription>{targetLabel} · {work ? "ให้คนละ 1 ดาวสีเขียวสำหรับงานเดียวกัน" : "เพิ่มรายชื่อนิสิตช่วยงานเพื่อรอยืนยัน"}</CardDescription>
+      <CardDescription>{targetLabel} · {work ? "ให้คนละ 1 ดาวสีเขียวสำหรับงานเดียวกัน" : "บันทึกการช่วยงานสำเร็จและให้คนละ 1 ดาวสีเขียวทันที"}</CardDescription>
     </CardHeader>
     <CardContent className="space-y-4" aria-busy={busy}>
       {disabled ? <p className="text-sm text-muted-foreground">ขณะนี้ไม่สามารถนำเข้ารายชื่อได้</p> : <>
@@ -111,15 +111,15 @@ export function GreenStarExcelImport({ target, targetLabel, disabled = false, on
           <Button type="button" disabled={busy || ready.length === 0 || (work && !description.trim())} onClick={() => {
             if (!requestId.current) return;
             setSubmission({ target, studentCodes: ready.map((row) => row.studentCode), description: description.trim(), requestId: requestId.current });
-          }}>{work ? `นำเข้าและให้ดาวสีเขียว ${ready.length} คน` : `นำเข้านิสิตช่วยงาน ${ready.length} คน`}</Button>
+          }}>{`นำเข้าและให้ดาวสีเขียว ${ready.length} คน`}</Button>
         </>}
       </>}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {message && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-400">{message}</p>}
       <ConfirmDialog open={submission !== null} onOpenChange={(open) => { if (!open && !busy) setSubmission(null); }} loading={busy}
-        title={work ? "ยืนยันนำเข้าและให้ดาวสีเขียว" : "ยืนยันนำเข้านิสิตช่วยงาน"}
-        description={submission ? `${targetLabel}\nนำเข้าเฉพาะรายชื่อที่ผ่านการตรวจสอบ ${submission.studentCodes.length} คน\n${submission.description ? `งานที่ช่วยเหลือ: ${submission.description}\n` : ""}${work ? "ให้คนละ 1 ดาวสีเขียว" : "เพิ่มรายชื่อเป็นรอยืนยันการช่วยงาน ยังไม่ให้ดาวสีเขียว"}` : ""}
-        confirmText={work ? "ยืนยันและให้ดาวสีเขียว" : "ยืนยันนำเข้ารายชื่อ"} onConfirm={confirm} />
+        title="ยืนยันนำเข้าและให้ดาวสีเขียว"
+        description={submission ? `${targetLabel}\nนำเข้าเฉพาะรายชื่อที่ผ่านการตรวจสอบ ${submission.studentCodes.length} คน\n${submission.description ? `งานที่ช่วยเหลือ: ${submission.description}\n` : ""}ให้คนละ 1 ดาวสีเขียวทันที` : ""}
+        confirmText="ยืนยันนำเข้าและให้ดาวสีเขียว" onConfirm={confirm} />
     </CardContent>
   </Card>;
 }

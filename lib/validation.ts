@@ -142,7 +142,8 @@ export const helperAssignSchema = z.object({
 export const helperBulkAssignSchema = z.object({
   userIds: z
     .array(z.string().trim().min(1))
-    .min(1, "กรุณาเลือกนิสิตอย่างน้อย 1 คน"),
+    .min(1, "กรุณาเลือกนิสิตอย่างน้อย 1 คน")
+    .max(500, "เลือกนิสิตได้สูงสุด 500 คนต่อครั้ง"),
   description: z.string().trim().max(1000).nullable().optional(),
 });
 
@@ -156,5 +157,10 @@ export const greenWorkAwardSchema = z.object({
   academicYearId: positiveDatabaseId,
   description: z.string().trim().min(1, "กรุณาระบุงานที่นิสิตช่วยเหลือ").max(1000),
   requestId: z.uuid(),
+});
+
+export const greenWorkBulkAwardSchema = greenWorkAwardSchema.omit({ userId: true }).extend({
+  userIds: z.array(positiveDatabaseId).min(1, "กรุณาเลือกนิสิตอย่างน้อย 1 คน").max(500, "เลือกนิสิตได้สูงสุด 500 คนต่อครั้ง")
+    .transform((ids) => [...new Set(ids)]),
 });
 

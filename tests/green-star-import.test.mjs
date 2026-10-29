@@ -15,14 +15,16 @@ function service({ authorized = true, yearStatus = "ACTIVE", missingStudent = fa
       findMany: async (query) => { state.queries.push(query); return (missingStudent ? students.slice(0, 1) : students).filter((student) => query.where.studentCode.in.includes(student.studentCode)); },
     },
     academicYear: { findUnique: async () => yearStatus ? { status: yearStatus } : null },
-    activity: { findUnique: async () => ({ academicYearId: wrongActivity ? 999n : 2n }) },
+    activity: {
+      findUnique: async () => ({ academicYearId: wrongActivity ? 999n : 2n }),
+      findUniqueOrThrow: async () => ({ id: 4n, academicYearId: 2n, title: "Service activity" }),
+    },
     starTransaction: { createMany: async ({ data }) => { state.stars.push(...data); return { count: data.length }; } },
     helperAssignment: {
-      findMany: async () => state.helpers.map(({ userId }) => ({ userId })),
-      createMany: async ({ data, skipDuplicates }) => {
-        assert.equal(skipDuplicates, true);
+      findMany: async ({ where }) => state.helpers.filter((helper) => helper.activityId === where.activityId && where.userId.in.includes(helper.userId)),
+      createMany: async ({ data }) => {
         const added = data.filter((row) => !state.helpers.some((existing) => existing.activityId === row.activityId && existing.userId === row.userId));
-        state.helpers.push(...added);
+        state.helpers.push(...added.map((row, index) => ({ ...row, id: BigInt(state.helpers.length + index + 1) })));
         return { count: added.length };
       },
     },
@@ -42,7 +44,7 @@ function service({ authorized = true, yearStatus = "ACTIVE", missingStudent = fa
       return pending;
     },
   };
-  return { state, ...loadTypeScript("../lib/green-star-import.ts", { "server-only": {}, "@/lib/prisma": { prisma: db } }) };
+  return { state, ...loadTypeScript("../lib/green-star-import.ts", { "server-only": {}, "@/lib/prisma": { prisma: db }, "@/lib/helper-awards": loadTypeScript("../lib/helper-awards.ts") }) };
 }
 
 test("preview matches exact student codes and reports unknown, duplicate and already assigned rows without writes", async () => {
@@ -82,17 +84,26 @@ test("one confirmation awards exactly one green star per student and simultaneou
   assert.equal(api.state.stars.length, 2);
 });
 
-test("activity import assigns helpers without giving stars or duplicating existing and cancelled assignments", async () => {
+test("activity import completes helpers and awards one linked star, skipping existing and cancelled assignments on retries", async () => {
   const api = service();
   api.state.helpers.push({ activityId: 4n, userId: 42n, status: "CANCELLED" });
   const request = { ...input, target: { mode: "activity", academicYearId: "2", activityId: "4" } };
   assert.deepEqual(await api.confirmGreenStarImport(request, 7n), { imported: 1, replayed: false });
   assert.equal(api.state.helpers.length, 2);
   assert.equal(api.state.helpers[0].status, "CANCELLED");
-  assert.equal(api.state.helpers[1].status, "ASSIGNED");
+  assert.equal(api.state.helpers[1].status, "COMPLETED");
+  assert.ok(api.state.helpers[1].completedAt instanceof Date);
   assert.equal(api.state.helpers[1].description, input.description);
-  assert.equal(api.state.stars.length, 0);
+  assert.equal(api.state.stars.length, 1);
+  assert.equal(api.state.stars[0].helperAssignmentId, api.state.helpers[1].id);
+  assert.equal(api.state.stars[0].userId, 43n);
+  assert.equal(api.state.stars[0].points, 1);
+  assert.equal(api.state.stars[0].academicYearId, 2n);
+  assert.equal(api.state.stars[0].status, "APPROVED");
   assert.deepEqual(await api.confirmGreenStarImport(request, 7n), { imported: 1, replayed: true });
+  assert.equal(api.state.stars.length, 1);
+  assert.deepEqual(await api.confirmGreenStarImport({ ...request, requestId: "new-request" }, 7n), { imported: 0, replayed: false });
+  assert.equal(api.state.stars.length, 1);
 });
 
 test("changed permissions, closed or missing years, mismatched activities and unavailable students prevent every write", async () => {
@@ -106,10 +117,13 @@ test("changed permissions, closed or missing years, mismatched activities and un
 });
 
 test("audit failures roll the entire import back and serialization conflicts retry safely", async () => {
-  const api = service({ auditFails: true });
-  await assert.rejects(api.confirmGreenStarImport(input, 7n), /AUDIT_FAILED/);
-  assert.equal(api.state.stars.length, 0);
-  assert.equal(api.state.receipts.length, 0);
+  for (const target of [input.target, { mode: "activity", academicYearId: "2", activityId: "4" }]) {
+    const api = service({ auditFails: true });
+    await assert.rejects(api.confirmGreenStarImport({ ...input, target }, 7n), /AUDIT_FAILED/);
+    assert.equal(api.state.stars.length, 0);
+    assert.equal(api.state.helpers.length, 0);
+    assert.equal(api.state.receipts.length, 0);
+  }
   const retry = service({ conflictOnce: true });
   assert.deepEqual(await retry.confirmGreenStarImport(input, 7n), { imported: 2, replayed: false });
   assert.equal(retry.state.transactions, 2);

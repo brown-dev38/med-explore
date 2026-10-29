@@ -1,6 +1,7 @@
 import "server-only";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { createCompletedHelpers } from "@/lib/helper-awards";
 import type { GreenStarImportInput, GreenStarImportTarget, StudentImportRow } from "@/lib/green-star-import-schema";
 
 export class GreenStarImportError extends Error {
@@ -75,15 +76,14 @@ export async function confirmGreenStarImport(input: GreenStarImportInput, actorI
         if (studentCodes.some((code) => !byCode.has(code))) throw new GreenStarImportError("รายชื่อนิสิตเปลี่ยนแปลง กรุณาตรวจสอบไฟล์อีกครั้ง ยังไม่มีการนำเข้ารายการใด", 409);
         const studentIds = studentCodes.map((code) => byCode.get(code)!.id);
         const now = new Date();
+        const activity = target.mode === "activity"
+          ? await tx.activity.findUniqueOrThrow({ where: { id: BigInt(target.activityId) } }) : null;
         const result = target.mode === "work"
           ? await tx.starTransaction.createMany({ data: studentIds.map((userId) => ({
             userId, academicYearId: BigInt(target.academicYearId), starType: "GREEN", points: 1,
             status: "APPROVED", approvedBy: actorId, approvedAt: now, reason: input.description,
           })) })
-          : await tx.helperAssignment.createMany({ data: studentIds.map((userId) => ({
-            activityId: BigInt(target.activityId), userId,
-            assignedBy: actorId, status: "ASSIGNED", description: input.description || null,
-          })), skipDuplicates: true });
+          : await createCompletedHelpers(tx, activity!, studentIds, actorId, input.description);
         await tx.auditLog.create({ data: {
           actorId, action, entityType: input.target.mode === "work" ? "AcademicYear" : "Activity",
           entityId: BigInt(input.target.mode === "work" ? input.target.academicYearId : input.target.activityId),
