@@ -1,5 +1,7 @@
 # การติดตั้งและใช้งาน (Operations)
 
+สำหรับเครื่องจริงให้ใช้ [คู่มือ Windows Server](./production-windows.md) และไฟล์ `.env.production.example` โดยแยกค่าจาก `.env` ที่ใช้พัฒนา คำสั่ง `prod:check`, `db:deploy:production`, `db:bootstrap`, `build:production` และ `start:production` โหลดเฉพาะค่าของ production ไม่ตกกลับไปใช้ฐานข้อมูลใน `.env` บัญชีตัวอย่างใน `db:seed` ใช้สำหรับพัฒนาเท่านั้น
+
 ## Environment variables (`.env`)
 
 ```dotenv

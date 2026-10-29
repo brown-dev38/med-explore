@@ -44,3 +44,39 @@ test("saved high-resolution check-in PNGs decode to the exact live scan URL", as
     assert.equal(scheduled, created.expiresAt);
   }
 });
+
+test("production QR links use the configured public origin and fail before writing when it is missing", async (t) => {
+  const previous = { NODE_ENV: process.env.NODE_ENV, NEXTAUTH_URL: process.env.NEXTAUTH_URL };
+  t.after(() => {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  });
+  process.env.NODE_ENV = "production";
+  process.env.NEXTAUTH_URL = "https://medexplore.medicine.up.ac.th";
+  let writes = 0;
+  const { POST } = loadTypeScript("../app/api/qr-sessions/route.ts", {
+    qrcode: { toDataURL: async (url) => `data:image/png;base64,${Buffer.from(url).toString("base64")}` },
+    "@/lib/prisma": { prisma: {
+      activity: { findUnique: async () => ({ id: 4n }) },
+      qrSession: { create: async ({ data }) => { writes++; return { id: 9n, ...data }; } },
+    } },
+    "@/lib/dal": { getCurrentUser: async () => ({ id: "1", roles: ["ADMIN"], permissions: [] }) },
+    "@/lib/permissions": loadTypeScript("../lib/permissions.ts"),
+    "@/lib/validation": loadTypeScript("../lib/validation.ts"),
+    "@/lib/api": loadTypeScript("../lib/api.ts"),
+    "@/lib/audit": { recordAudit: async () => {} },
+    "@/lib/qr": loadTypeScript("../lib/qr.ts", { "server-only": {} }),
+    "@/lib/attendance-worker": { scheduleAttendanceReview() {} },
+  });
+  const request = () => new Request("http://127.0.0.1:3101/api/qr-sessions", {
+    method: "POST", headers: { Referer: "https://untrusted.invalid", "X-Forwarded-Host": "untrusted.invalid" },
+    body: JSON.stringify({ activityId: "4", purpose: "CHECK_IN", ttlMinutes: 15 }),
+  });
+  const response = await POST(request());
+  assert.equal(response.status, 201);
+  assert.equal(new URL((await response.json()).data.scanUrl).origin, process.env.NEXTAUTH_URL);
+  delete process.env.NEXTAUTH_URL;
+  assert.equal((await POST(request())).status, 503);
+  assert.equal(writes, 1, "invalid production origin must not create an unusable QR session");
+});

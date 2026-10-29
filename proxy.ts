@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { PERMISSIONS, ROLES, dashboardPathFor } from "@/lib/permissions";
 import { isActiveAccount } from "@/lib/account-status";
+import { getAuthCookies, isAuthSessionCookie } from "@/lib/auth-cookies";
 
 const AUTH_PAGES = ["/login", "/register"];
 
@@ -12,6 +13,7 @@ export async function proxy(request: NextRequest) {
   const token = await getToken({
     req: request,
     secret: process.env.NEXTAUTH_SECRET,
+    cookieName: getAuthCookies()?.sessionToken?.name,
   });
 
   const isAdminArea = pathname === "/admin" || pathname.startsWith("/admin/");
@@ -27,8 +29,11 @@ export async function proxy(request: NextRequest) {
       : NextResponse.next();
     if (token) {
       for (const cookie of request.cookies.getAll()) {
-        if (/^(?:__Secure-)?next-auth\.session-token(?:\.\d+)?$/.test(cookie.name)) {
-          response.cookies.delete(cookie.name);
+        if (isAuthSessionCookie(cookie.name)) {
+          response.cookies.set(cookie.name, "", {
+            ...getAuthCookies()?.sessionToken?.options,
+            path: "/", expires: new Date(0),
+          });
         }
       }
     }
@@ -44,8 +49,11 @@ export async function proxy(request: NextRequest) {
       // Clear every session cookie chunk so a deleted account can reach login.
       const response = NextResponse.next();
       for (const cookie of request.cookies.getAll()) {
-        if (/^(?:__Secure-)?next-auth\.session-token(?:\.\d+)?$/.test(cookie.name)) {
-          response.cookies.delete(cookie.name);
+        if (isAuthSessionCookie(cookie.name)) {
+          response.cookies.set(cookie.name, "", {
+            ...getAuthCookies()?.sessionToken?.options,
+            path: "/", expires: new Date(0),
+          });
         }
       }
       return response;

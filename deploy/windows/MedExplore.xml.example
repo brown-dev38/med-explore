@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  WinSW bundled layout: rename WinSW-x64.exe to MedExploreStar.exe and place it
+  beside this edited file named MedExploreStar.xml, outside the IIS web root.
+  Review absolute paths and configure a dedicated service identity before use.
+  Do not put passwords in this XML; the launcher reads the protected environment.
+-->
+<service>
+  <id>MedExploreStar</id>
+  <name>MedExplore Star</name>
+  <description>Next.js production server and automatic attendance awards.</description>
+  <executable>C:\Program Files\nodejs\node.exe</executable>
+  <arguments>"C:\Apps\MedExploreStar\current\scripts\start-production.mjs"</arguments>
+  <workingdirectory>C:\Apps\MedExploreStar\current</workingdirectory>
+  <env name="NODE_ENV" value="production" />
+  <startmode>Automatic</startmode>
+  <delayedAutoStart>true</delayedAutoStart>
+  <hidewindow>true</hidewindow>
+  <stoptimeout>30 sec</stoptimeout>
+  <onfailure action="restart" delay="15 sec" />
+  <resetfailure>1 hour</resetfailure>
+  <logpath>C:\Apps\MedExploreStar\logs</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>8</keepFiles>
+  </log>
+</service>

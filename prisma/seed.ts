@@ -3,6 +3,10 @@ import bcrypt from "bcrypt";
 import { PrismaClient } from "@prisma/client";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 
+if (process.env.NODE_ENV === "production") {
+  throw new Error("Demo seed is disabled in production. Use npm run db:bootstrap to initialize roles and the first ADMIN without demo data.");
+}
+
 const adapter = new PrismaMariaDb(process.env.DATABASE_URL as string);
 const prisma = new PrismaClient({ adapter });
 

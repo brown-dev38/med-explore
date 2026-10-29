@@ -6,8 +6,10 @@ import bcrypt from "bcrypt";
 import { prisma } from "@/lib/prisma";
 import { getAccountStatus } from "@/lib/account-status";
 import { authUserRelations, toAuthUser } from "@/lib/auth-user";
+import { getAuthCookies } from "@/lib/auth-cookies";
 
 export const authOptions: NextAuthOptions = {
+  cookies: getAuthCookies(),
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
   providers: [

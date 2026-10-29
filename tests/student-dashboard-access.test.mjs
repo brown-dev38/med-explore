@@ -71,6 +71,7 @@ test("invalid, missing and nonstudent targets return 404", async () => {
 test("proxy blocks every direct student dashboard path for staff and leaves student access intact", async () => {
   for (const role of ["ADMIN", "ORGANIZER", "STUDENT", "UNKNOWN", null]) {
     const { proxy } = loadTypeScript("../proxy.ts", {
+      "@/lib/auth-cookies": loadTypeScript("../lib/auth-cookies.ts"),
       "next/server": { NextResponse: { redirect: (url) => ({ redirect: url.pathname }), next: () => ({ next: true }) } },
       "next-auth/jwt": { getToken: async () => role ? { uid: "7", roles: [role], permissions: [] } : null },
       "@/lib/permissions": permissions,
@@ -86,6 +87,7 @@ test("proxy blocks every direct student dashboard path for staff and leaves stud
 
 test("organizers need no extra management permission to enter the student viewing route", async () => {
   const { proxy } = loadTypeScript("../proxy.ts", {
+    "@/lib/auth-cookies": loadTypeScript("../lib/auth-cookies.ts"),
     "next/server": { NextResponse: { redirect: (url) => ({ redirect: url.pathname }), next: () => ({ next: true }) } },
     "next-auth/jwt": { getToken: async () => ({ uid: "7", roles: ["ORGANIZER"], permissions: [] }) },
     "@/lib/permissions": permissions,

@@ -11,6 +11,13 @@ import { scheduleAttendanceReview } from "@/lib/attendance-worker";
 const DEFAULT_TTL_MINUTES = 15;
 
 function getRequestOrigin(req: Request): string {
+  // In production QR links always use the configured public HTTPS origin,
+  // never Referer or a caller-supplied forwarded host.
+  if (process.env.NODE_ENV === "production") {
+    const configured = new URL(process.env.NEXTAUTH_URL ?? "");
+    if (configured.protocol !== "https:" || configured.username || configured.password || configured.pathname !== "/" || configured.search || configured.hash) throw new Error("Invalid production origin");
+    return configured.origin;
+  }
   const referer = req.headers.get("referer");
   if (referer) {
     try {
@@ -45,6 +52,10 @@ export async function POST(req: Request) {
   const activityId = parseId(parsed.data.activityId);
   if (!activityId) return errorResponse("ไม่พบกิจกรรม", 404);
 
+  let origin: string;
+  try { origin = getRequestOrigin(req); }
+  catch { return errorResponse("ยังไม่ได้ตั้งค่า URL ระบบสำหรับสร้าง QR กรุณาติดต่อผู้ดูแล", 503); }
+
   const activity = await prisma.activity.findUnique({ where: { id: activityId } });
   if (!activity) return errorResponse("ไม่พบกิจกรรม", 404);
 
@@ -62,7 +73,6 @@ export async function POST(req: Request) {
     },
   });
 
-  const origin = getRequestOrigin(req);
   const scanUrl = `${origin}/scan?token=${encodeURIComponent(token)}`;
   const qrDataUrl = await QRCode.toDataURL(scanUrl, { width: 1024, margin: 4 });
 

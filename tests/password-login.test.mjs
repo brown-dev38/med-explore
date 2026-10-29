@@ -17,6 +17,7 @@ test("only the password provider can sign in and it uses the existing local acco
   let user = { id: 7n, username: "student", firstname: "Student", lastname: "Name", email: "student@example.test", isActive: true, passwordHash: "stored-hash",
     userRoles: [{ role: { name: "STUDENT", permissions: [{ permission: { code: "activity.read" } }] } }] };
   const options = loadTypeScript("../lib/auth.ts", {
+    "@/lib/auth-cookies": loadTypeScript("../lib/auth-cookies.ts"),
     "next-auth": { getServerSession: async () => null },
     "next-auth/providers/credentials": (options) => ({ ...options, id: "credentials" }),
     "@/lib/prisma": { prisma: { user: { findFirst: async (query) => { queries.push(query); return user; } } } },

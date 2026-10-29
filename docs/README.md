@@ -46,3 +46,7 @@ npm run dev                   # http://localhost:3000
 | ADMIN | `admin` | `Admin@1234` |
 | ORGANIZER | `organizer` | `Organizer@1234` |
 | STUDENT | `student` … `student5` | `Student@1234` |
+
+## คู่มือ Production
+
+- [ติดตั้งบน Windows Server / IIS / Windows Service](./production-windows.md)

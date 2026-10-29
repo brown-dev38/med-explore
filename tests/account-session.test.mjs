@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadTypeScript } from "./load-typescript.mjs";
+const authCookies = loadTypeScript("../lib/auth-cookies.ts");
 
 test("account checks reject missing, inactive, and malformed account IDs", async () => {
   let active = true;
@@ -23,6 +24,7 @@ test("account checks reject missing, inactive, and malformed account IDs", async
 
 function authCallbacks(active) {
   return loadTypeScript("../lib/auth.ts", {
+    "@/lib/auth-cookies": authCookies,
     "@/lib/prisma": {},
     "@/lib/account-status": { getAccountStatus: async () => active === true ? "ACTIVE" : active === false ? "SUSPENDED" : "DELETED" },
     "next-auth": { getServerSession: async () => null },
@@ -78,6 +80,7 @@ test("signing in with a password replaces the retired provider session", async (
 
 test("proxy rejects retired provider sessions on every protected area and clears their cookie chunks", async () => {
   const { proxy } = loadTypeScript("../proxy.ts", {
+    "@/lib/auth-cookies": authCookies,
     "next-auth/jwt": { getToken: async () => ({ uid: "2", roles: ["ADMIN"], microsoftAccountId: "9" }) },
     "@/lib/permissions": loadTypeScript("../lib/permissions.ts"),
     "@/lib/account-status": { isActiveAccount: async () => { throw new Error("retired sessions must be rejected before database access"); } },
@@ -104,6 +107,7 @@ test("deleted accounts retain a distinct reason after permissions are removed", 
 test("stale session cookies cannot trap deleted users in login redirects", async () => {
   const permissions = loadTypeScript("../lib/permissions.ts");
   const { proxy } = loadTypeScript("../proxy.ts", {
+    "@/lib/auth-cookies": authCookies,
     "next-auth/jwt": { getToken: async () => ({ uid: "2", roles: ["STUDENT"] }) },
     "@/lib/permissions": permissions,
     "@/lib/account-status": { isActiveAccount: async () => false },

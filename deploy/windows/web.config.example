@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  IIS reverse-proxy site ONLY. Put the edited file in a separate, empty IIS
+  physical directory, never in the application source directory.
+  HTTPS medexplore.medicine.up.ac.th:443 (SNI) -> 127.0.0.1:3101.
+  Add a dedicated hostname binding alongside other sites; never replace theirs.
+  First verify the private Node.js port is unused; this template reserves nothing.
+  Requires URL Rewrite, ARR proxy enabled, site-scoped settings, and allowed
+  server variables documented in docs/production-windows.md.
+  TLS terminates directly at IIS; this template is not for an upstream TLS proxy.
+-->
+<configuration>
+  <system.webServer>
+    <directoryBrowse enabled="false" />
+    <httpErrors existingResponse="PassThrough" />
+    <security>
+      <requestFiltering>
+        <!-- 6 MiB envelope permits 5 MiB Excel uploads plus multipart overhead. -->
+        <requestLimits maxAllowedContentLength="6291456" />
+      </requestFiltering>
+    </security>
+    <rewrite>
+      <rules>
+        <clear />
+        <rule name="Reject unknown host" stopProcessing="true">
+          <match url=".*" />
+          <conditions>
+            <add input="{HTTP_HOST}" pattern="^medexplore\.medicine\.up\.ac\.th(?::443)?$" ignoreCase="true" negate="true" />
+          </conditions>
+          <action type="CustomResponse" statusCode="400" statusReason="Bad Request" statusDescription="Unexpected host" />
+        </rule>
+        <rule name="Next.js on loopback" stopProcessing="true">
+          <match url="(.*)" />
+          <serverVariables>
+            <set name="HTTP_X_FORWARDED_HOST" value="medexplore.medicine.up.ac.th" replace="true" />
+            <set name="HTTP_X_FORWARDED_PROTO" value="https" replace="true" />
+            <set name="HTTP_X_FORWARDED_FOR" value="{REMOTE_ADDR}" replace="true" />
+          </serverVariables>
+          <action type="Rewrite" url="http://127.0.0.1:3101/{R:1}" appendQueryString="true" />
+        </rule>
+      </rules>
+    </rewrite>
+  </system.webServer>
+</configuration>
