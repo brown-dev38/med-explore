@@ -111,7 +111,15 @@ export function buildAnnualReport(data: AnnualReportData, filters: AnnualReportF
         a.status === "DRAFT" ? "ยังไม่ได้เปิดรับลงทะเบียน กรุณาแก้เวลาหรือยกเลิก" : "ยังไม่ได้เปลี่ยนสถานะเป็นสิ้นสุดกิจกรรม");
     }
   }
-  const students = [...people.values()].sort((a, b) => (a.user.studentCode ?? "").localeCompare(b.user.studentCode ?? "") || reportPersonName(a.user).localeCompare(reportPersonName(b.user), "th"));
+  const students = [...people.values()].sort((a, b) => (b.yellow + b.green) - (a.yellow + a.green)
+    || (a.user.studentCode ?? "").localeCompare(b.user.studentCode ?? "")
+    || reportPersonName(a.user).localeCompare(reportPersonName(b.user), "th")
+    || (a.user.id < b.user.id ? -1 : a.user.id > b.user.id ? 1 : 0));
+  let rank = 0;
+  const studentRanks = students.map((student, index) => {
+    if (index === 0 || student.yellow + student.green !== students[index - 1].yellow + students[index - 1].green) rank = index + 1;
+    return rank;
+  });
   const available = (p: typeof students[number]) => year.status === "CLOSED" ? 0 : Math.max(0, p.balance - p.reserved);
   const summary: AnnualReportSummary = {
     activities: activities.length, registrations: participations.length, uniqueAttendees: uniqueAttendees.size,
@@ -136,6 +144,7 @@ export function buildAnnualReport(data: AnnualReportData, filters: AnnualReportF
     ["ผ่านเวลา / ได้รับดาว", "แยกผลผ่านเกณฑ์เวลาออกจากดาวที่ได้รับอนุมัติจริง ดาวเหลืองมีเพดานรายปี"],
     ["ยอดย้อนหลังเมื่อปิดปี", "แสดงยอดบัญชีประวัติไว้ แต่ดาวที่ใช้แลกได้ในระบบเป็นศูนย์เมื่อปิดปี"],
     ["ขอบเขตรายบุคคล", "เฉพาะผู้ที่มีรายการในปีนี้ ไม่ใช่ทะเบียนนิสิตทั้งปี และไม่ใช้ระบุผู้ที่ไม่เข้าร่วมเลย"],
+    ["อันดับดาวรวมรายบุคคล", "เรียงดาวเหลืองและดาวเขียวที่ได้รับอนุมัติรวมจากมากไปน้อยในปีที่เลือก ไม่หักดาวแลกรางวัล ไม่รวมรายการปรับยอด คะแนนเท่ากันใช้อันดับร่วม เช่น 1, 1, 3"],
     ["ข้อมูลชื่อบุคคล", "ใช้ชื่อและรหัสบุคคลปัจจุบัน ณ เวลาส่งออก"],
     ["สำเนารายงาน", "ไฟล์เป็นข้อมูล ณ เวลาส่งออก โปรดเก็บไฟล์ฉบับสรุปไว้หลังปิดปี การส่งออกใหม่อาจต่างหากมีการแก้ไขข้อมูล"],
   ];
@@ -146,8 +155,8 @@ export function buildAnnualReport(data: AnnualReportData, filters: AnnualReportF
         const t = activityTotals.get(a.id)!;
         return [String(a.id), a.title, reportPersonName(a.organizer), a.location ?? "", reportDate(a.startsAt), reportDate(a.endsAt), ACTIVITY_REPORT_STATUSES[a.status], a.minMinutes, t.registered, t.checkedIn, t.completed, t.qualified, t.minutes];
       }) },
-    { id: "students", name: "สรุปรายบุคคล", columns: ["รหัสบุคคล", "รหัสนิสิต", "ชื่อ–นามสกุล", "ลงทะเบียน (กิจกรรม)", "เช็คอิน (กิจกรรม)", "เข้า–ออกครบ (กิจกรรม)", "ผ่านเวลา (กิจกรรม)", "เวลารวม (นาที)", "งานช่วยเหลือสำเร็จ", "ดาวเหลืองได้รับ", "ดาวเขียวได้รับ", "ดาวเพิ่มอนุมัติทั้งหมด", "ดาวใช้แลกรางวัล", "ยอดบัญชีประวัติ", "ดาวกันไว้", "ดาวใช้แลกได้ขณะนี้"],
-      rows: students.map((p) => [String(p.user.id), p.user.studentCode ?? "", reportPersonName(p.user), p.registered, p.checkedIn, p.completed, p.qualified, p.minutes, p.helped, p.yellow, p.green, p.earned, p.spent, p.balance, p.reserved, available(p)]) },
+    { id: "students", name: "สรุปรายบุคคล", columns: ["อันดับดาวรวม", "ดาวรวม (เหลือง + เขียว)", "รหัสบุคคล", "รหัสนิสิต", "ชื่อ–นามสกุล", "ลงทะเบียน (กิจกรรม)", "เช็คอิน (กิจกรรม)", "เข้า–ออกครบ (กิจกรรม)", "ผ่านเวลา (กิจกรรม)", "เวลารวม (นาที)", "งานช่วยเหลือสำเร็จ", "ดาวเหลืองได้รับ", "ดาวเขียวได้รับ", "ดาวเพิ่มอนุมัติทั้งหมด", "ดาวใช้แลกรางวัล", "ยอดบัญชีประวัติ", "ดาวกันไว้", "ดาวใช้แลกได้ขณะนี้"],
+      rows: students.map((p, index) => [studentRanks[index], p.yellow + p.green, String(p.user.id), p.user.studentCode ?? "", reportPersonName(p.user), p.registered, p.checkedIn, p.completed, p.qualified, p.minutes, p.helped, p.yellow, p.green, p.earned, p.spent, p.balance, p.reserved, available(p)]) },
     { id: "attendance", name: "รายละเอียดการเข้าร่วม", columns: ["รหัสลงทะเบียน", "รหัสกิจกรรม", "กิจกรรม", "สถานะกิจกรรม", "รหัสบุคคล", "รหัสนิสิต", "ชื่อ–นามสกุล", "สถานะการเข้าร่วม", "เวลาเข้า (ไทย)", "วิธีเช็คอิน", "เวลาออก (ไทย)", "วิธีเช็คเอาท์", "นาทีจากบันทึก", "เกณฑ์ขั้นต่ำ (นาที)", "ผลเกณฑ์เวลา", "ผลประเมิน", "ดาวเหลืองอนุมัติ", "หมายเหตุประเมิน", "การนับยอดรวม"], rows: attendanceRows },
     { id: "stars", name: "ประวัติรายการดาว", columns: ["รหัสรายการดาว", "รหัสบุคคล", "รหัสนิสิต", "ชื่อ–นามสกุล", "ประเภทดาว", "จำนวนเพิ่ม / ลด", "สถานะ", "กิจกรรม", "รหัสลงทะเบียน", "รหัสงานช่วยเหลือ", "รหัสคำขอรางวัล", "ของรางวัล", "เหตุผล", "ผู้อนุมัติ", "สร้างเมื่อ (ไทย)", "อนุมัติเมื่อ (ไทย)"], rows: starRows },
     { id: "redemptions", name: "การแลกรางวัล", columns: ["รหัสคำขอ", "รหัสบุคคล", "รหัสนิสิต", "ชื่อ–นามสกุล", "รางวัล", "ดาวที่ใช้ต่อคำขอ", "สถานะ", "วันที่ขอ (ไทย)", "วันที่พิจารณา (ไทย)", "วันที่แลก (ไทย)", "วันที่รับของ (ไทย)", "รหัสผู้พิจารณา", "หมายเหตุ"],

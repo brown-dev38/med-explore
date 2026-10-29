@@ -168,6 +168,7 @@ export function AnnualReports({ years, initialYearId }: { years: StudentYearOpti
                 {item.name} ({item.rowCount.toLocaleString("th-TH")})
               </Button>)}
             </div>
+            {sheet?.id === "students" && <p className="text-sm text-muted-foreground">จัดอันดับจากดาวเหลืองและดาวเขียวที่ได้รับอนุมัติรวมในปีที่เลือก เรียงจากมากไปน้อย คะแนนเท่ากันใช้อันดับร่วม โดยไม่หักดาวที่ใช้แลกรางวัลและไม่รวมรายการปรับยอด</p>}
             {sheet && <div className="overflow-hidden rounded-xl border">
               <Table>
                 <TableHeader><TableRow>{sheet.columns.map((column) => <TableHead key={column} className="whitespace-nowrap">{column}</TableHead>)}</TableRow></TableHeader>

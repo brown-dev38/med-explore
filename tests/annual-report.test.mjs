@@ -26,9 +26,11 @@ test("annual totals distinguish people, visits, actual minutes, earned stars, sp
   });
   const people = report.sheets.find((s) => s.id === "students").rows;
   assert.equal(people.length, 3, "assigned helpers with no other records are still represented");
-  const student = people.find((row) => row[0] === "9007199254740993");
-  assert.equal(student[1], "00001234");
-  assert.equal(student[7], 120, "cancelled activities do not add attendance minutes");
+  const student = people.find((row) => row[2] === "9007199254740993");
+  assert.equal(student[0], 1);
+  assert.equal(student[1], 6);
+  assert.equal(student[3], "00001234");
+  assert.equal(student[9], 120, "cancelled activities do not add attendance minutes");
   const issues = report.sheets.find((s) => s.id === "issues").rows.map((row) => row[0]);
   assert.ok(issues.includes("ฉบับร่างเลยกำหนด"));
   assert.ok(issues.includes("ขาดเช็คเอาท์"));
@@ -42,6 +44,30 @@ test("closed-year reports retain ledger history while spendable stars become zer
   assert.equal(report.summary.balance, 4);
   assert.equal(report.summary.reserved, 2);
   assert.equal(report.summary.available, 0);
+});
+
+test("individual trophy rankings use approved yellow plus green stars, descending, with shared ranks", () => {
+  const data = annualFixture("CLOSED");
+  const other = data.participations.find((p) => p.user.id === 2n).user;
+  const helper = data.helpers.find((h) => h.student.id === 3n).student;
+  const zero = { ...other, id: 4n, studentCode: "00000004", firstname: "Zero" };
+  const star = data.stars[0];
+  data.stars.push(
+    { ...star, id: 101n, user: other, starType: "GREEN", points: 10, participationId: null },
+    { ...star, id: 102n, user: helper, starType: "YELLOW", points: 4, participationId: null },
+    { ...star, id: 103n, user: helper, starType: "GREEN", points: 2, participationId: null },
+    { ...star, id: 104n, user: other, starType: "ADJUSTMENT", points: -10, participationId: null, redemptionId: 21n },
+    { ...star, id: 105n, user: zero, starType: "ADJUSTMENT", points: 1000, participationId: null },
+    { ...star, id: 106n, user: zero, starType: "GREEN", points: 999, status: "PENDING", participationId: null },
+    { ...star, id: 107n, user: zero, points: 999, status: "REJECTED", participationId: null },
+  );
+  const sheet = build(data, filters("&report=students")).sheets.find((s) => s.id === "students");
+  assert.deepEqual(sheet.columns.slice(0, 2), ["อันดับดาวรวม", "ดาวรวม (เหลือง + เขียว)"]);
+  assert.deepEqual(sheet.rows.map((row) => row.slice(0, 3)), [
+    [1, 10, "2"], [2, 6, "3"], [2, 6, "9007199254740993"], [4, 0, "4"],
+  ]);
+  const reversed = { ...data, stars: [...data.stars].reverse(), participations: [...data.participations].reverse(), helpers: [...data.helpers].reverse() };
+  assert.deepEqual(build(reversed).sheets.find((s) => s.id === "students").rows, sheet.rows);
 });
 
 test("detail filters select matching rows while the accompanying overview stays explicitly annual", () => {
@@ -96,12 +122,15 @@ test("the XLSX reopens with seven Thai sheets, metadata, filters, numeric totals
   }
   const students = workbook.getWorksheet("สรุปรายบุคคล");
   let student;
-  students.eachRow((row) => { if (row.getCell(1).value === "9007199254740993") student = row; });
-  assert.equal(student.getCell(2).value, "00001234");
-  assert.equal(typeof student.getCell(3).value, "string");
-  assert.match(student.getCell(3).value, /^=HYPERLINK/);
-  assert.equal(student.getCell(3).type, ExcelJS.ValueType.String);
-  assert.equal(student.getCell(14).value, 4);
+  students.eachRow((row) => { if (row.getCell(3).value === "9007199254740993") student = row; });
+  assert.equal(student.getCell(1).value, 1);
+  assert.equal(student.getCell(2).value, 6);
+  assert.equal(student.getCell(2).type, ExcelJS.ValueType.Number);
+  assert.equal(student.getCell(4).value, "00001234");
+  assert.equal(typeof student.getCell(5).value, "string");
+  assert.match(student.getCell(5).value, /^=HYPERLINK/);
+  assert.equal(student.getCell(5).type, ExcelJS.ValueType.String);
+  assert.equal(student.getCell(16).value, 4);
   assert.match(workbook.getWorksheet("สรุปรายกิจกรรม").getCell("F7").text, /01\/01\/2026.*01:00:00/);
 });
 
