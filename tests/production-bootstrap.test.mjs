@@ -9,13 +9,14 @@ const environment = {
   BOOTSTRAP_ADMIN_PASSWORD: "long-unique-fixture-password",
 };
 
-function fixture({ users = [], auditFails = false } = {}) {
+function fixture({ users = [], auditFails = false, hashFails = false, createFails = false } = {}) {
   const state = { users, permissions: [], roles: [], assignments: [], audits: [], hashes: [] };
   const tx = {
     user: {
       findMany: async ({ where }) => state.users.filter((user) => user.username === where.OR[0].username || user.email.toLowerCase() === where.OR[1].email),
       create: async ({ data }) => {
-        const stored = { id: 10n, ...data, userRoles: [{ role: { name: "ADMIN" } }] };
+        if (createFails) throw new Error("account creation failed");
+        const stored = { id: 10n, ...data, userRoles: [{ roleId: data.userRoles.create.roleId, role: { name: "ADMIN" } }] };
         state.users.push(stored); return stored;
       },
     },
@@ -39,7 +40,10 @@ function fixture({ users = [], auditFails = false } = {}) {
     const snapshot = structuredClone(state);
     try { return await callback(tx); } catch (error) { Object.assign(state, snapshot); throw error; }
   } };
-  const hashPassword = async (password, rounds) => { state.hashes.push({ password, rounds }); return "hashed-bootstrap-password"; };
+  const hashPassword = async (password, rounds) => {
+    if (hashFails) throw new Error("password hashing failed");
+    state.hashes.push({ password, rounds }); return "hashed-bootstrap-password";
+  };
   return { state, run: (input = productionBootstrapInput(environment)) => bootstrapProduction(prisma, input, hashPassword) };
 }
 
@@ -54,6 +58,44 @@ test("production bootstrap rejects missing/default credentials without including
   ]) assert.throws(() => productionBootstrapInput({ ...environment, ...changes }), (error) => !error.message.includes(environment.DATABASE_URL) && !error.message.includes(environment.BOOTSTRAP_ADMIN_PASSWORD));
   const input = productionBootstrapInput(environment);
   assert.equal(input.email, "admin@example.test");
+});
+
+test("bootstrap normalizes identifiers while preserving the exact password including spaces", () => {
+  const password = "  a-unique-production-password  ";
+  const input = productionBootstrapInput({ ...environment,
+    BOOTSTRAP_ADMIN_USERNAME: "  production-admin  ",
+    BOOTSTRAP_ADMIN_EMAIL: "  ADMIN@EXAMPLE.TEST  ", BOOTSTRAP_ADMIN_PASSWORD: password,
+  });
+  assert.deepEqual(input, { username: "production-admin", email: "admin@example.test", password });
+});
+
+test("bootstrap enforces bcrypt's 72-byte limit for ASCII and Thai passwords and bounds identifiers", () => {
+  for (const password of ["a".repeat(16), "a".repeat(72), "ท".repeat(24)]) {
+    assert.equal(productionBootstrapInput({ ...environment, BOOTSTRAP_ADMIN_PASSWORD: password }).password, password);
+  }
+  for (const password of ["a".repeat(15), "a".repeat(73), "ท".repeat(25), " ".repeat(20)]) {
+    assert.throws(() => productionBootstrapInput({ ...environment, BOOTSTRAP_ADMIN_PASSWORD: password }), /BOOTSTRAP_ADMIN_PASSWORD/);
+  }
+  assert.equal(productionBootstrapInput({ ...environment, BOOTSTRAP_ADMIN_USERNAME: "a".repeat(191) }).username.length, 191);
+  assert.throws(() => productionBootstrapInput({ ...environment, BOOTSTRAP_ADMIN_USERNAME: "a".repeat(192) }), /BOOTSTRAP_ADMIN_USERNAME/);
+  assert.throws(() => productionBootstrapInput({ ...environment, BOOTSTRAP_ADMIN_EMAIL: `${"a".repeat(180)}@example.test` }), /BOOTSTRAP_ADMIN_EMAIL/);
+});
+
+test("bootstrap grants each role only its intended permissions and links the new administrator to ADMIN", async () => {
+  const api = fixture();
+  await api.run();
+  const assignedCodes = (name) => {
+    const role = api.state.roles.find((entry) => entry.name === name);
+    return api.state.assignments.filter((entry) => entry.roleId === role.id)
+      .map((entry) => api.state.permissions.find((permission) => permission.id === entry.permissionId).code).sort();
+  };
+  assert.deepEqual(assignedCodes("ADMIN"), api.state.permissions.map((entry) => entry.code).sort());
+  assert.deepEqual(assignedCodes("ORGANIZER"), ["academic_year.manage", "activity.manage", "attendance.record", "participation.review", "reward.manage", "star.approve", "survey.manage"]);
+  assert.deepEqual(assignedCodes("STUDENT"), ["reward.redeem"]);
+  const admin = api.state.roles.find((entry) => entry.name === "ADMIN");
+  assert.equal(api.state.users[0].userRoles[0].roleId, admin.id);
+  assert.equal(api.state.audits[0].actorId, api.state.users[0].id);
+  assert.equal(api.state.audits[0].entityId, api.state.users[0].id);
 });
 
 test("bootstrap creates only permissions, roles and one ADMIN with a hashed password and no demo content", async () => {
@@ -88,6 +130,8 @@ test("bootstrap refuses conflicting identifiers, role escalation and reactivatio
     [{ ...base, username: "another-admin" }], [{ ...base, email: "another@example.test" }],
     [{ ...base, userRoles: [{ role: { name: "STUDENT" } }] }], [{ ...base, isActive: false }],
     [{ ...base, passwordHash: null }], [base, { ...base, id: 4n }],
+    [{ ...base, userRoles: [] }],
+    [{ ...base, userRoles: [{ role: { name: "ADMIN" } }, { role: { name: "STUDENT" } }] }],
   ]) {
     const api = fixture({ users });
     const before = structuredClone(api.state);
@@ -103,11 +147,21 @@ test("audit failure rolls back all bootstrap writes", async () => {
   assert.deepEqual(api.state, before);
 });
 
+test("password hashing and user creation failures leave no partially initialized production data", async () => {
+  for (const options of [{ hashFails: true }, { createFails: true }]) {
+    const api = fixture(options);
+    const before = structuredClone(api.state);
+    await assert.rejects(api.run(), /password hashing failed|account creation failed/);
+    assert.deepEqual(api.state, before);
+  }
+});
+
 test("development demo seed refuses production before connecting to the database", () => {
   const result = spawnSync(process.execPath, ["prisma/seed.ts"], {
     cwd: new URL("..", import.meta.url), encoding: "utf8", timeout: 10000,
     env: { ...process.env, NODE_ENV: "production", DATABASE_URL: "mysql://fixture:fixture@127.0.0.1:1/unused" },
   });
+  assert.ifError(result.error);
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Demo seed is disabled in production/);
   assert.doesNotMatch(result.stdout, /Demo credentials/);
