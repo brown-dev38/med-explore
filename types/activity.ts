@@ -65,7 +65,7 @@ export type QrSessionDto = {
   id: string;
   activityId: string;
   purpose: QrPurpose;
-  expiresAt: string;
+  expiresAt: string | null;
   token: string;
   scanUrl: string;
   qrDataUrl: string;

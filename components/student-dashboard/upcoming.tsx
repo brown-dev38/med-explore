@@ -112,7 +112,7 @@ async function UpcomingActivitiesContent({ searchParams, target }: StudentYearPa
 
               <CardFooter className="mt-auto flex-wrap justify-between gap-3 px-5 py-4">
                 <span className="text-xs whitespace-nowrap text-muted-foreground">
-                  เช็คอินเพื่อรับดาวหลัง QR หมดอายุ
+                  เช็คอินเพื่อรับดาวตามรูปแบบ QR ที่ผู้จัดกำหนด
                 </span>
                 <Badge variant="outline" className="text-xs font-normal">
                   รอเปิดรับลงทะเบียน

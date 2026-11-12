@@ -4,7 +4,7 @@ import { loadTypeScript } from "./load-typescript.mjs";
 
 const checkInAt = new Date("2026-10-29T03:00:00Z");
 const expiresAt = new Date("2026-10-29T03:15:00Z");
-function setup({ used = 0, activityStatus = "PUBLISHED", student = true, due = expiresAt, records } = {}) {
+function setup({ activityStatus = "PUBLISHED", student = true, due = expiresAt, records, sessionExpiry = expiresAt } = {}) {
   const state = { star: null, audits: [], participation: {
     id: 1n, userId: 2n, activityId: 3n, reviewDueAt: due, eligibilityStatus: "PENDING",
     activity: { id: 3n, status: activityStatus, academicYearId: 4n, minMinutes: 1440, endsAt: expiresAt },
@@ -16,10 +16,10 @@ function setup({ used = 0, activityStatus = "PUBLISHED", student = true, due = e
       findUniqueOrThrow: async () => state.participation,
       update: async ({ data }) => Object.assign(state.participation, data),
     },
-    qrSession: { findFirst: async () => ({ expiresAt }) },
+    qrSession: { findFirst: async () => ({ expiresAt: sessionExpiry }) },
     starTransaction: {
       findUnique: async () => state.star,
-      aggregate: async () => ({ _sum: { points: used } }),
+      aggregate: async () => { throw new Error("Yellow stars must not be limited by annual totals"); },
       upsert: async ({ create, update }) => { state.star = state.star ? { ...state.star, ...update } : { id: 5n, ...create }; return state.star; },
     },
     auditLog: { create: async ({ data }) => state.audits.push(data) },
@@ -60,14 +60,33 @@ test("legacy check-ins resolve their QR expiry without requiring checkout", asyn
   assert.equal(api.state.participation.reviewDueAt, expiresAt);
 });
 
-test("no check-in, future check-ins, nonstudents, unpublished activities and the yearly cap cannot earn a star", async () => {
+test("no check-in, future check-ins, nonstudents and unpublished activities cannot earn a star", async () => {
   for (const options of [{ records: [] }, { records: [{ eventType: "CHECK_IN", occurredAt: new Date("2099-01-01Z") }] },
-    { student: false }, { activityStatus: "DRAFT" }, { activityStatus: "CANCELLED" }, { used: 12 }]) {
+    { student: false }, { activityStatus: "DRAFT" }, { activityStatus: "CANCELLED" }]) {
     const api = setup(options);
     assert.equal((await api.evaluate(expiresAt)).yellowStarPoints, 0);
     assert.notEqual(api.state.star?.status, "APPROVED");
   }
-  assert.equal((await setup({ used: 11 }).evaluate(expiresAt)).yellowStarPoints, 1);
+});
+
+test("awards do not depend on the student's annual total", async () => {
+  const api = setup();
+  assert.equal((await api.evaluate(expiresAt)).yellowStarPoints, 1);
+  await api.evaluate(expiresAt);
+  assert.equal(api.state.audits.length, 1, "re-evaluation does not award a second star");
+});
+
+test("a QR without expiry awards immediately, before the activity ends, including legacy check-ins", async () => {
+  for (const due of [checkInAt, null]) {
+    const api = setup({ due, sessionExpiry: null });
+    const result = await api.evaluate(checkInAt);
+    assert.equal(result.yellowStarPoints, 1);
+    assert.equal(result.eligibilityStatus, "APPROVED");
+    assert.equal(result.attendedMinutes, null);
+    assert.equal(api.state.participation.reviewDueAt, checkInAt);
+    await api.evaluate(expiresAt);
+    assert.equal(api.state.audits.length, 1);
+  }
 });
 
 test("cancelling an activity revokes its awarded star and restoring it reuses the same star", async () => {
@@ -108,14 +127,16 @@ test("background processing skips closed years, already approved rows and future
   assert.equal(selection.take, 250);
 });
 
-test("the check-in transaction revalidates QR expiry and stores the server session deadline", async () => {
-  for (const valid of [true, false]) {
+test("the check-in transaction revalidates timed and unlimited QRs and stores the server award deadline", async () => {
+  for (const scenario of ["timed", "unlimited", "expired", "revoked", "wrong-activity", "checkout"]) {
     let stored;
     let records = 0;
-    const deadline = new Date(Date.now() + (valid ? 60000 : -1));
+    const deadline = scenario === "unlimited" ? null : new Date(Date.now() + (scenario === "expired" ? -1 : 60000));
+    const valid = scenario === "timed" || scenario === "unlimited";
+    const startedAt = new Date();
     const tx = {
       $queryRaw: async () => [{ status: "ACTIVE" }],
-      qrSession: { findUnique: async () => ({ activityId: 3n, purpose: "CHECK_IN", revokedAt: null, expiresAt: deadline }) },
+      qrSession: { findUnique: async () => ({ activityId: scenario === "wrong-activity" ? 4n : 3n, purpose: scenario === "checkout" ? "CHECK_OUT" : "CHECK_IN", revokedAt: scenario === "revoked" ? new Date() : null, expiresAt: deadline }) },
       participation: { findUniqueOrThrow: async () => ({ activityId: 3n }), update: async ({ data }) => { stored = data.reviewDueAt; } },
       attendanceRecord: { findMany: async () => [], create: async ({ data }) => { records++; return { id: 1n, ...data }; } },
       auditLog: { create: async () => {} },
@@ -127,7 +148,8 @@ test("the check-in transaction revalidates QR expiry and stores the server sessi
     const pending = recordAttendance({ participationId: 1n, eventType: "CHECK_IN", method: "QR", occurredAt: new Date(), recordedBy: 2n, qrSessionId: 9n });
     if (valid) {
       await pending;
-      assert.equal(stored, deadline);
+      if (deadline) assert.equal(stored, deadline);
+      else assert.ok(stored instanceof Date && stored >= startedAt && stored <= new Date());
       assert.equal(records, 1);
     } else {
       await assert.rejects(pending, (error) => error.status === 400);

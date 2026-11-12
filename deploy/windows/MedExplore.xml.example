@@ -10,8 +10,8 @@
   <name>MedExplore Star</name>
   <description>Next.js production server and automatic attendance awards.</description>
   <executable>C:\Program Files\nodejs\node.exe</executable>
-  <arguments>"C:\Apps\MedExploreStar\current\scripts\start-production.mjs"</arguments>
-  <workingdirectory>C:\Apps\MedExploreStar\current</workingdirectory>
+  <arguments>"C:\apps\medexplore\scripts\start-production.mjs"</arguments>
+  <workingdirectory>C:\apps\medexplore</workingdirectory>
   <env name="NODE_ENV" value="production" />
   <startmode>Automatic</startmode>
   <delayedAutoStart>true</delayedAutoStart>
@@ -19,7 +19,7 @@
   <stoptimeout>30 sec</stoptimeout>
   <onfailure action="restart" delay="15 sec" />
   <resetfailure>1 hour</resetfailure>
-  <logpath>C:\Apps\MedExploreStar\logs</logpath>
+  <logpath>C:\apps\medexplore\logs</logpath>
   <log mode="roll-by-size">
     <sizeThreshold>10240</sizeThreshold>
     <keepFiles>8</keepFiles>

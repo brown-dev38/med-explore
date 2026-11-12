@@ -50,6 +50,22 @@ test("refresh restores the exact original QR after server validation, without cr
   assert.equal(calls[0].options.method, undefined);
 });
 
+test("unlimited QRs survive refresh and elapsed time without a countdown, and can still be closed", async (t) => {
+  const unlimited = { ...cached, expiresAt: null };
+  const { saved, mount, page } = setup(t, async () => Response.json({ data: { id: unlimited.id, activityId: unlimited.activityId, purpose: unlimited.purpose, expiresAt: null } }));
+  saved.set(key(), JSON.stringify(unlimited));
+  const ui = mount(); ui.render(); await setImmediate();
+  assert.deepEqual(ui.render().qr, unlimited);
+  assert.equal(page.intervals.size, 0, "unlimited QRs must not create an expiry countdown");
+  t.mock.timers.setTime(now.getTime() + 365 * 24 * 60 * 60000);
+  await page.tick();
+  assert.deepEqual(ui.render().qr, unlimited);
+  assert.equal(saved.has(key()), true);
+  ui.render().setQr(null);
+  assert.equal(saved.has(key()), false);
+  assert.equal(ui.render().qr, null);
+});
+
 test("returning to a preserved activity rechecks the cached QR and rejects a server-side revocation", async (t) => {
   let revoked = false;
   const { saved, mount } = setup(t, async () => revoked ? Response.json({ data: null }) : metadata());

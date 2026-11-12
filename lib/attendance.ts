@@ -49,10 +49,11 @@ async function writeEvents(tx: Prisma.TransactionClient, params: {
   await requireOpenActivityYear(tx, participation.activityId);
   if (params.qrSessionId !== undefined) {
     const session = await tx.qrSession.findUnique({ where: { id: params.qrSessionId } });
-    if (!session || session.activityId !== participation.activityId || session.purpose !== "CHECK_IN" || session.revokedAt || session.expiresAt <= new Date()) {
+    if (!session || session.activityId !== participation.activityId || session.purpose !== "CHECK_IN" || session.revokedAt || (session.expiresAt !== null && session.expiresAt <= new Date())) {
       throw new AttendanceError("QR ไม่ถูกต้อง ถูกยกเลิก หรือหมดอายุแล้ว", 400);
     }
-    await tx.participation.update({ where: { id: participationId }, data: { reviewDueAt: session.expiresAt } });
+    // Persist the selected QR's award deadline so later QRs cannot delay this check-in.
+    await tx.participation.update({ where: { id: participationId }, data: { reviewDueAt: session.expiresAt ?? new Date() } });
   } else if (params.events.some((event) => event.eventType === "CHECK_IN")) {
     await tx.participation.update({ where: { id: participationId }, data: { reviewDueAt: null } });
   }

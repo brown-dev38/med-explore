@@ -177,7 +177,7 @@ async function StudentDashboardContent({ searchParams, target }: StudentYearPage
           {/* <div><dt className="flex items-center gap-1 text-xs text-muted-foreground"><Clock className="size-3.5" aria-hidden="true" />เวลาเข้าร่วมรวม</dt><dd className="mt-1 text-lg font-semibold">{totalAttendanceMinutes(participations)}<span className="ml-1 text-xs font-normal text-muted-foreground">นาที</span></dd></div> */}
           <div><dt className="text-xs text-muted-foreground">ดาวที่ได้รับแต่ละสี</dt><dd className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm font-medium"><span className="flex items-center gap-1"><Star className="size-4 fill-amber-300 text-amber-600" aria-hidden="true" />เหลือง {yellowStars}</span><span className="flex items-center gap-1"><Star className="size-4 fill-emerald-300 text-emerald-600" aria-hidden="true" />เขียว {greenStars}</span></dd></div>
         </dl>
-        <p className="text-xs text-muted-foreground">ดาวสีเหลืองจากการเข้าร่วมสูงสุด 12 ดาวต่อปี · ดาวสีเขียวจากการช่วยงาน</p>
+        <p className="text-xs text-muted-foreground">ดาวสีเหลืองจากการเข้าร่วมไม่จำกัดยอดสะสมต่อปี · ดาวสีเขียวจากการช่วยงาน</p>
         {selectedYear && <nav aria-label="ดูกิจกรรมในปีการศึกษาที่เลือก" className="flex flex-wrap gap-2">
           {[
             { filter: "all" as const, label: "กิจกรรมทั้งหมด", count: activityTotal },

@@ -72,15 +72,15 @@ test("Excel previews exclude admin/organizer and inactive accounts, and existing
   });
 });
 
-test("Excel confirmations award immediately, preserve the twelve-star cap and reject closed or cancelled targets", { skip: !db }, async () => {
+test("Excel confirmations award beyond twelve stars and reject closed or cancelled targets", { skip: !db }, async () => {
   await fixture(async ({ tx, actor, first, second, year, activity, makeActivity, service }) => {
     await tx.starTransaction.createMany({ data: Array.from({ length: 11 }, () => ({ userId: first.id, academicYearId: year.id, starType: "YELLOW", status: "APPROVED", points: 1 })) });
     const input = { studentCodes: [first.studentCode], academicYearId: String(year.id), requestId: randomUUID() };
     assert.equal((await service.addParticipantsAndAward(activity.id, actor.id, input)).awarded, 1);
     const next = await makeActivity();
-    assert.equal((await service.addParticipantsAndAward(next.id, actor.id, { ...input, requestId: randomUUID() })).awarded, 0);
+    assert.equal((await service.addParticipantsAndAward(next.id, actor.id, { ...input, requestId: randomUUID() })).awarded, 1);
     const sum = await tx.starTransaction.aggregate({ where: { userId: first.id, starType: "YELLOW", status: "APPROVED" }, _sum: { points: true } });
-    assert.equal(sum._sum.points, 12);
+    assert.equal(sum._sum.points, 13);
     await tx.activity.update({ where: { id: next.id }, data: { status: "CANCELLED" } });
     await assert.rejects(service.addParticipantsAndAward(next.id, actor.id, { userIds: [String(second.id)] }), (error) => error.status === 409);
     await tx.academicYear.update({ where: { id: year.id }, data: { status: "CLOSED" } });

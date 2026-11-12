@@ -9,8 +9,9 @@ function setup(principal = { id: "1", roles: ["ADMIN"], permissions: [] }, sessi
   const { GET } = loadTypeScript("../app/api/qr-sessions/[id]/route.ts", {
     "@/lib/prisma": { prisma: { qrSession: { findFirst: async (query) => {
       queries.push(query);
-      return session && Object.entries(query.where).every(([key, value]) => key === "expiresAt"
-        ? session.expiresAt > value.gt : session[key] === value) ? session : null;
+      return session && Object.entries(query.where).every(([key, value]) => key === "OR"
+        ? value.some((filter) => filter.expiresAt === null ? session.expiresAt === null : session.expiresAt !== null && session.expiresAt > filter.expiresAt.gt)
+        : session[key] === value) ? session : null;
     } } } },
     "@/lib/dal": { getCurrentUser: async () => principal },
     "@/lib/permissions": loadTypeScript("../lib/permissions.ts"), "@/lib/api": loadTypeScript("../lib/api.ts"),
@@ -31,8 +32,17 @@ test("staff restore validation returns only the original active session metadata
     assert.deepEqual((await response.json()).data, { id: "9", activityId: "4", purpose: "CHECK_IN", expiresAt: active.expiresAt.toISOString() });
     assert.equal(api.queries[0].where.tokenHash, qr.hashQrToken("original-token"));
     assert.equal(api.queries[0].where.revokedAt, null);
-    assert.ok(api.queries[0].where.expiresAt.gt instanceof Date);
+    assert.deepEqual(api.queries[0].where.OR[0], { expiresAt: null });
+    assert.ok(api.queries[0].where.OR[1].expiresAt.gt instanceof Date);
   }
+});
+
+test("a QR without expiry can be restored until revoked", async () => {
+  const session = { ...active, expiresAt: null };
+  const response = await setup(undefined, session).get();
+  assert.equal((await response.json()).data.expiresAt, null);
+  const revoked = await setup(undefined, { ...session, revokedAt: new Date() }).get();
+  assert.equal((await revoked.json()).data, null);
 });
 
 test("guests and students cannot inspect cached QR sessions", async () => {

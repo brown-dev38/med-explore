@@ -311,7 +311,7 @@ export function ActivitiesManager({
                       </div>
                       <div className="text-[11px] text-muted-foreground pl-4.5 flex items-center gap-1 mt-1 font-medium">
                         <Clock className="h-3 w-3 text-muted-foreground" />
-                        ให้ดาวสีเหลืองหลัง QR เช็คอินหมดอายุ
+                        ให้ดาวสีเหลืองตามรูปแบบ QR ที่เลือก
                       </div>
                     </TableCell>
                     <TableCell>
@@ -399,7 +399,7 @@ export function ActivitiesManager({
           <DialogHeader>
             <DialogTitle>สร้างกิจกรรมใหม่</DialogTitle>
             <DialogDescription>
-              กรอกข้อมูลกิจกรรมและช่วงเวลา นิสิตรับดาวสีเหลืองหลัง QR เช็คอินหมดอายุ
+              กรอกข้อมูลกิจกรรมและช่วงเวลา เลือก QR แบบกำหนดเวลาหรือรับดาวทันทีได้ในหน้ากิจกรรม
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreate} className="space-y-4">

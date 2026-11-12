@@ -61,7 +61,7 @@ export async function POST(req: Request) {
 
   const ttlMinutes = parsed.data.ttlMinutes ?? DEFAULT_TTL_MINUTES;
   const token = generateQrToken();
-  const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
+  const expiresAt = parsed.data.ttlMinutes === null ? null : new Date(Date.now() + ttlMinutes * 60 * 1000);
 
   const session = await prisma.qrSession.create({
     data: {
@@ -84,17 +84,17 @@ export async function POST(req: Request) {
     details: {
       activityId: String(activityId),
       purpose: parsed.data.purpose,
-      expiresAt: expiresAt.toISOString(),
+      expiresAt: expiresAt?.toISOString() ?? null,
     },
   });
-  scheduleAttendanceReview(expiresAt);
+  if (expiresAt) scheduleAttendanceReview(expiresAt);
 
   return successResponse(
     {
       id: String(session.id),
       activityId: String(activityId),
       purpose: session.purpose,
-      expiresAt: expiresAt.toISOString(),
+      expiresAt: expiresAt?.toISOString() ?? null,
       token,
       scanUrl,
       qrDataUrl,

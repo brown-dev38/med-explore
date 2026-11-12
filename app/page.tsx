@@ -18,6 +18,8 @@ import {
   UsersRound,
 } from "lucide-react";
 import { SessionNav } from "@/components/session-nav";
+import { SiteFooter } from "@/components/site-footer";
+import { FacultyLogo } from "@/components/faculty-logo";
 import styles from "./home.module.css";
 
 export const metadata: Metadata = {
@@ -60,9 +62,7 @@ export default function Home() {
       <header className={styles.header}>
         <div className={styles.headerInner}>
           <Link href="/" className={styles.brand} aria-label="MedExplore Wednesday หน้าแรก">
-            <span className={styles.brandIcon}>
-              <Star size={23} fill="currentColor" aria-hidden="true" />
-            </span>
+            <FacultyLogo className={styles.brandIcon} />
             <span>MedExplore<small>Wednesday · พุธบ่าย เปิดโลกคลินิก</small></span>
           </Link>
           <nav className={styles.sectionNav} aria-label="เกี่ยวกับโครงการ">
@@ -233,11 +233,7 @@ export default function Home() {
         </section>
       </main>
 
-      <footer className={styles.footer}>
-        <span><Star size={16} fill="currentColor" aria-hidden="true" /> MedExplore Wednesday</span>
-        <p>Good Doctors Brighter Tomorrows</p>
-        <a href="#main-content">กลับขึ้นด้านบน ↑</a>
-      </footer>
+      <SiteFooter className="border-[#dfe5dc] bg-transparent text-[#66766d]" />
     </div>
   );
 }

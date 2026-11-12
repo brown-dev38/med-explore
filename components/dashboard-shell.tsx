@@ -17,12 +17,13 @@ import {
   ChevronRight,
   PanelLeftClose,
   PanelLeftOpen,
-  Star,
   Gift,
 } from "lucide-react";
 import { dashboardBreadcrumbs } from "@/lib/dashboard-breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { LogoutButton } from "@/components/logout-button";
+import { SiteFooter } from "@/components/site-footer";
+import { FacultyLogo } from "@/components/faculty-logo";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -196,7 +197,7 @@ export function DashboardShell({
       <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
         <DialogContent id="dashboard-mobile-sidebar" variant="drawer">
           <DialogHeader className="border-b p-5 pr-12">
-            <DialogTitle className="flex items-center gap-2"><Star className="size-5 fill-amber-300 text-primary" />{brand}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2"><FacultyLogo />{brand}</DialogTitle>
             <DialogDescription>{subtitle ?? "เมนูการใช้งาน"}</DialogDescription>
           </DialogHeader>
           <nav aria-label="เมนูหลักบนมือถือ" className="flex-1 space-y-1.5 overflow-y-auto px-3 py-6">
@@ -215,9 +216,7 @@ export function DashboardShell({
         className={`fixed inset-y-0 left-0 z-40 hidden flex-col border-r bg-card transition-[width] duration-200 motion-reduce:transition-none lg:flex ${sidebarExpanded ? "w-64" : "w-20"}`}
       >
         <div className={`flex h-20 shrink-0 items-center border-b ${sidebarExpanded ? "gap-2.5 px-5" : "justify-center px-3"}`}>
-          <span title={brand} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-xs">
-            <Star className="h-4.5 w-4.5 fill-amber-300 text-amber-300" />
-          </span>
+          <FacultyLogo />
           <div className={sidebarExpanded ? "min-w-0" : "sr-only"}>
             <p className="truncate text-sm font-bold text-foreground">
               {brand}
@@ -244,7 +243,7 @@ export function DashboardShell({
       </aside>
 
       {/* Main Content Area */}
-      <div className={`transition-[padding] duration-200 motion-reduce:transition-none ${sidebarExpanded ? "lg:pl-64" : "lg:pl-20"}`}>
+      <div className={`flex min-h-dvh flex-col transition-[padding] duration-200 motion-reduce:transition-none ${sidebarExpanded ? "lg:pl-64" : "lg:pl-20"}`}>
         <header className="sticky top-0 z-30 flex min-h-20 items-center gap-3 border-b bg-card/95 px-4 py-3 backdrop-blur-sm sm:px-6 lg:h-20 lg:px-8 lg:py-0">
           <Button
             type="button"
@@ -277,9 +276,10 @@ export function DashboardShell({
             <DashboardBreadcrumb items={navItems} />
           </Suspense>
         </header>
-        <main id="dashboard-content" tabIndex={-1} className="mx-auto w-full max-w-6xl px-4 py-7 outline-none sm:px-6 lg:px-8 lg:py-9">
+        <main id="dashboard-content" tabIndex={-1} className="mx-auto w-full max-w-6xl flex-1 px-4 py-7 outline-none sm:px-6 lg:px-8 lg:py-9">
           {children}
         </main>
+        <SiteFooter />
       </div>
     </div>
     </TooltipProvider>

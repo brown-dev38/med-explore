@@ -122,8 +122,10 @@ endpoint จัดการผู้ใช้ต้องมีสิทธิ�
 
 | Method | Path | สิทธิ์ | Body |
 | --- | --- | --- | --- |
-| POST | `/api/qr-sessions` | `activity.manage` | `{ activityId, purpose: "CHECK_IN" \| "CHECK_OUT", ttlMinutes? }` (ค่าเริ่มต้น 15 นาที) |
-| DELETE | `/api/qr-sessions/[id]` | `activity.manage` | ปิด (revoke) QR ก่อนหมดเวลา |
+| POST | `/api/qr-sessions` | `activity.manage` | `{ activityId, purpose: "CHECK_IN", ttlMinutes? }` (1–240 นาที; ไม่ส่ง = 15 นาที; `null` = ไม่กำหนดเวลาและให้ดาวทันทีเมื่อเช็คอิน) |
+| DELETE | `/api/qr-sessions/[id]` | `activity.manage` | ปิด (revoke) QR ทั้งแบบกำหนดเวลาและไม่กำหนดเวลา |
+
+QR แบบไม่กำหนดเวลาคืน `expiresAt: null` และใช้ได้จนกว่าจะถูกปิด การเช็คอินยังต้องอยู่ในปีที่ ACTIVE และกิจกรรมเดียวกันให้ดาวสีเหลืองได้เพียง 1 ครั้งต่อคน ยอดสะสมดาวสีเหลืองต่อปีไม่มีเพดาน
 
 `POST` คืนค่า:
 
@@ -150,12 +152,12 @@ endpoint จัดการผู้ใช้ต้องมีสิทธิ�
 | Method | Path | สิทธิ์ | Body |
 | --- | --- | --- | --- |
 | POST | `/api/attendance/scan` | ล็อกอิน | `{ token }` |
-| POST | `/api/attendance/manual` | `activity.manage` หรือ `attendance.record` | `{ participationId, eventType: "CHECK_IN" \| "CHECK_OUT", occurredAt? }` |
+| POST | `/api/attendance/manual` | `activity.manage` หรือ `attendance.record` | `{ participationId, eventType: "CHECK_IN", occurredAt? }` |
 | POST | `/api/activities/[id]/attendance/recalculate` | `activity.manage` | คำนวณนาทีและประเมินดาวจากเวลาเดิมของทุกคน |
 
-การลงเวลาผ่าน QR/รายคน/bulk คำนวณนาทีจากช่วงเข้า–ออกจริงทั้งหมดโดยปัดลง ไม่ตัดตามกำหนดกิจกรรม ผ่าน `minMinutes` แล้วให้ STUDENT ดาวสีเหลือง `APPROVED` 1 ดาว (สูงสุด 12 ต่อปี); การแก้เวลา/เปลี่ยนเกณฑ์/ยกเลิกกิจกรรมจะประเมินใหม่และปรับสถานะดาวเดิมโดยไม่สร้างซ้ำ ทั้งเวลา ผลประเมิน ดาว และ Audit Log อยู่ใน transaction เดียว
+การลงเวลาผ่าน QR/รายคน/bulk ให้ STUDENT ดาวสีเหลือง `APPROVED` กิจกรรมละ 1 ดาว ไม่จำกัดยอดสะสมต่อปี ไม่ใช้ `minMinutes` หรือเช็คเอาท์เป็นเงื่อนไข QR แบบกำหนดเวลาให้ดาวหลังหมดอายุ ส่วนแบบไม่กำหนดเวลาให้ทันที การแก้เวลา/ยกเลิกกิจกรรมจะประเมินใหม่และปรับสถานะดาวเดิมโดยไม่สร้างซ้ำ ทั้งเวลา ผลประเมิน ดาว และ Audit Log อยู่ใน transaction เดียว
 
-คำตอบ scan/manual เพิ่ม `data.evaluation = { attendedMinutes, status, eligibilityStatus, yellowStarPoints, message }`; รายชื่อผู้เข้าร่วมเพิ่ม `attendedMinutes`, `yellowStarPoints`, `reviewNote` เพื่อแสดงนาทีและเหตุผลที่ไม่ได้ดาว กรณีมีเวลาเข้าหรือออกไม่ครบจะยังไม่ให้ดาว
+คำตอบ scan/manual เพิ่ม `data.evaluation = { attendedMinutes, status, eligibilityStatus, yellowStarPoints, message }`; รายชื่อผู้เข้าร่วมเพิ่ม `attendedMinutes`, `yellowStarPoints`, `reviewNote` เพื่อแสดงนาทีและผลประเมิน `attendedMinutes` อาจเป็น null เมื่อไม่มีเช็คเอาท์ โดยยังได้รับดาวได้
 
 **`/api/attendance/scan`**
 - หา `qr_session` ที่ `tokenHash` ตรง, ยังไม่ถูก revoke และ `expiresAt > now` → ไม่เจอ = 400

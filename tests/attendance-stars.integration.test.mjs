@@ -116,7 +116,7 @@ test("real manual check-in ignores minimum minutes; cancellation revokes and res
   });
 });
 
-test("the real yearly limit stays at twelve yellow stars, independently of green stars", { skip: !db }, async () => {
+test("yellow stars can exceed twelve in the same year, independently of green stars", { skip: !db }, async () => {
   await rollbackTest(async ({ tx, user, year, write, awarded, attendance, actor, createActivity }) => {
     await tx.starTransaction.createMany({ data: [
       ...Array.from({ length: 11 }, () => ({ userId: user.id, academicYearId: year.id, starType: "YELLOW", points: 1, status: "APPROVED" })),
@@ -126,8 +126,8 @@ test("the real yearly limit stays at twelve yellow stars, independently of green
     assert.equal((await awarded())._sum.points, 12);
     const secondActivity = await createActivity();
     const second = await tx.participation.create({ data: { activityId: secondActivity.id, userId: user.id } });
-    assert.equal((await attendance.recordAttendance({ participationId: second.id, eventType: "CHECK_IN", method: "ORGANIZER", occurredAt: start, recordedBy: actor.id })).evaluation.yellowStarPoints, 0);
-    assert.equal((await awarded())._sum.points, 12);
+    assert.equal((await attendance.recordAttendance({ participationId: second.id, eventType: "CHECK_IN", method: "ORGANIZER", occurredAt: start, recordedBy: actor.id })).evaluation.yellowStarPoints, 1);
+    assert.equal((await awarded())._sum.points, 13);
   });
 });
 

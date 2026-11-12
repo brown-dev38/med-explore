@@ -40,13 +40,13 @@ export function ActivityQrDisplay({ qr, activityTitle, remaining }: {
           <DialogHeader>
             <DialogTitle>QR Code {purpose}</DialogTitle>
             <p className="break-words text-sm font-medium">{activityTitle}</p>
-            <DialogDescription>ใช้ได้ถึง {formatThaiDateTime(qr.expiresAt)} · ภาพที่บันทึกจะหมดอายุตามเวลานี้เช่นกัน</DialogDescription>
+            <DialogDescription>{qr.expiresAt === null ? "ไม่กำหนดเวลา · สแกนเช็คอินแล้วรับดาวสีเหลืองทันที · ใช้ได้จนกว่าผู้จัดจะปิด QR" : `ใช้ได้ถึง ${formatThaiDateTime(qr.expiresAt)} · ภาพที่บันทึกจะหมดอายุตามเวลานี้เช่นกัน`}</DialogDescription>
           </DialogHeader>
           <div className="flex min-w-0 justify-center">
             <Image src={qr.qrDataUrl} alt={`QR Code ${purpose} สำหรับ ${activityTitle}`} width={1024} height={1024} unoptimized className="aspect-square w-full max-w-[min(100%,60dvh)] rounded-xl bg-white p-4 object-contain" />
           </div>
           <div className="flex flex-wrap items-center justify-center gap-4">
-            <span className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 font-mono text-lg font-bold tabular-nums ${remaining <= 10 ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}><Clock className="size-4" aria-hidden="true" />{countdown}</span>
+            <span className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 font-mono text-lg font-bold tabular-nums ${qr.expiresAt !== null && remaining <= 10 ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}><Clock className="size-4" aria-hidden="true" />{qr.expiresAt === null ? "ไม่กำหนดเวลา" : countdown}</span>
             <SaveQrButton qr={qr} />
           </div>
         </DialogContent>

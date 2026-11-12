@@ -6,7 +6,8 @@ import { loadTypeScript } from "./load-typescript.mjs";
 
 test("saved high-resolution check-in PNGs decode to the exact live scan URL", async () => {
   const qr = loadTypeScript("../lib/qr.ts", { "server-only": {} });
-  for (const purpose of ["CHECK_IN"]) {
+  for (const ttlMinutes of [15, null, undefined]) {
+    const purpose = "CHECK_IN";
     let created;
     let scheduled;
     const { POST } = loadTypeScript("../app/api/qr-sessions/route.ts", {
@@ -22,7 +23,7 @@ test("saved high-resolution check-in PNGs decode to the exact live scan URL", as
       "@/lib/attendance-worker": { scheduleAttendanceReview: (expiresAt) => { scheduled = expiresAt; } },
     });
     const response = await POST(new Request("https://example.test/api/qr-sessions", {
-      method: "POST", body: JSON.stringify({ activityId: "4", purpose, ttlMinutes: 15 }),
+      method: "POST", body: JSON.stringify({ activityId: "4", purpose, ttlMinutes }),
     }));
     assert.equal(response.status, 201);
     const { data } = await response.json();
@@ -41,7 +42,25 @@ test("saved high-resolution check-in PNGs decode to the exact live scan URL", as
     assert.equal(url.searchParams.get("token"), data.token);
     assert.equal(created.tokenHash, qr.hashQrToken(data.token));
     assert.equal(created.purpose, purpose);
-    assert.equal(scheduled, created.expiresAt);
+    if (ttlMinutes === null) {
+      assert.equal(created.expiresAt, null);
+      assert.equal(data.expiresAt, null);
+      assert.equal(scheduled, undefined, "unlimited QRs have no review timer");
+    } else {
+      assert.ok(created.expiresAt instanceof Date);
+      assert.ok(Math.abs(created.expiresAt.getTime() - Date.now() - 15 * 60000) < 5000);
+      assert.equal(scheduled, created.expiresAt);
+    }
+  }
+});
+
+test("QR expiry accepts explicit null while timed QRs keep the 1–240 minute validation", () => {
+  const { qrSessionCreateSchema } = loadTypeScript("../lib/validation.ts");
+  for (const ttlMinutes of [null, undefined, 1, 240]) {
+    assert.equal(qrSessionCreateSchema.safeParse({ activityId: "4", ttlMinutes }).success, true);
+  }
+  for (const ttlMinutes of [0, -1, 241, 1.5, "bad", ""]) {
+    assert.equal(qrSessionCreateSchema.safeParse({ activityId: "4", ttlMinutes }).success, false);
   }
 });
 

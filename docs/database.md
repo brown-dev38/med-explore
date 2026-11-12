@@ -53,8 +53,8 @@
 | `status` | `ParticipationStatus` | `REGISTERED` เป็นค่าเริ่มต้น |
 | `eligibility_status` | `ReviewStatus` | `PENDING` เมื่อเวลาไม่ครบ, `APPROVED` เมื่อผ่านเกณฑ์, `REJECTED` เมื่อไม่ผ่าน |
 | `attended_minutes` | Int? | นาทีเต็มจากเช็คอินถึงเช็คเอาท์จริง; null เมื่อยังไม่ครบ |
-| `reviewed_at`, `reviewed_by`, `review_note` | | ผลประเมินเวลาอัตโนมัติ (ผู้ประเมินเป็น null), เหตุผลไม่ได้ดาว/ติดเพดาน |
-| `review_due_at` | DateTime? | เตรียมไว้สำหรับรอบตรวจสอบของผู้จัด |
+| `reviewed_at`, `reviewed_by`, `review_note` | | ผลประเมินดาวอัตโนมัติ (ผู้ประเมินเป็น null), เหตุผลไม่ได้ดาว |
+| `review_due_at` | DateTime? | เวลาประเมินดาว: เวลาหมดอายุ QR หรือเวลาปัจจุบันสำหรับ QR ไม่กำหนดเวลา |
 
 ### `AttendanceRecord` (`attendance_records`)
 | ฟิลด์ | ชนิด | หมายเหตุ |
@@ -73,7 +73,7 @@
 | `activity_id`, `created_by` | FK | |
 | `purpose` | `QrPurpose` | `CHECK_IN` / `CHECK_OUT` |
 | `token_hash` | VarChar(255) unique | เก็บเฉพาะ sha256 ของโทเคน |
-| `expires_at` | DateTime(3) | หมดอายุ |
+| `expires_at` | DateTime(3)? | เวลาหมดอายุ; null = ไม่กำหนดเวลาและรับดาวทันทีเมื่อเช็คอิน |
 | `revoked_at` | DateTime(3)? | ปิด QR ก่อนกำหนด |
 
 ### `AuditLog` (`audit_logs`)
@@ -81,7 +81,7 @@
 
 ## ดาวและตารางที่เตรียมไว้สำหรับขั้นถัดไป
 
-- `StarTransaction` ใช้งานแล้วสำหรับดาวสีเหลืองอัตโนมัติ: `points=1`, `status=APPROVED`; ประเมินไม่ผ่านภายหลังหรือเกินเพดานใช้ `REJECTED` โดยเก็บรายการเดิมไว้ ยอดสะสมนับเฉพาะ `APPROVED`
+- `StarTransaction` ใช้งานแล้วสำหรับดาวสีเหลืองอัตโนมัติ: `points=1`, `status=APPROVED` กิจกรรมละ 1 ดาว ไม่จำกัดยอดสะสมต่อปี; ประเมินไม่ผ่านภายหลังใช้ `REJECTED` โดยเก็บรายการเดิมไว้ ยอดสะสมนับเฉพาะ `APPROVED`
 - `HelperAssignment` และดาวสีเขียวยังเตรียมไว้สำหรับขั้นถัดไป
 - `RewardTier`, `RewardRedemption` (รางวัล/แลกคะแนน — Sprint 4)
 - `SurveyResponse` (แบบประเมิน)

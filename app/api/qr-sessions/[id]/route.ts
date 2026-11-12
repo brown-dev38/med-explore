@@ -21,11 +21,12 @@ export async function GET(req: Request, { params }: RouteContext) {
     return errorResponse("ข้อมูล QR ไม่ถูกต้อง", 400);
   }
   const session = await prisma.qrSession.findFirst({
-    where: { id: sessionId, activityId: parsedActivityId, tokenHash: hashQrToken(token), purpose: "CHECK_IN", revokedAt: null, expiresAt: { gt: new Date() } },
+    where: { id: sessionId, activityId: parsedActivityId, tokenHash: hashQrToken(token), purpose: "CHECK_IN", revokedAt: null,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
     select: { id: true, activityId: true, purpose: true, expiresAt: true },
   });
   return Response.json({ success: true, data: session ? {
-    id: String(session.id), activityId: String(session.activityId), purpose: session.purpose, expiresAt: session.expiresAt.toISOString(),
+    id: String(session.id), activityId: String(session.activityId), purpose: session.purpose, expiresAt: session.expiresAt?.toISOString() ?? null,
   } : null }, { headers: { "Cache-Control": "private, no-store" } });
 }
 

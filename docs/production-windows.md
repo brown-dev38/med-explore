@@ -38,13 +38,13 @@ Get-Service -Name 'MedExploreStar' -ErrorAction SilentlyContinue
 
 ## 2. แยกโฟลเดอร์แอปออกจาก IIS
 
-ตัวอย่างโครงสร้าง:
+กำหนดโฟลเดอร์แอปบนเซิร์ฟเวอร์เป็น `C:\apps\medexplore` โดยวาง `package.json`, `scripts`, `.next` และ `.env.production` ในโฟลเดอร์นี้โดยตรง ไม่ต้องมีโฟลเดอร์ `current` ซ้อนอีกชั้น โครงสร้างที่ใช้:
 
 ```text
-C:\Apps\MedExploreStar\current\   source + node_modules + .next + .env.production
-C:\Apps\MedExploreStar\service\   MedExploreStar.exe + MedExploreStar.xml
-C:\Apps\MedExploreStar\logs\      log ของ Windows Service
-C:\Apps\MedExploreStar\backups\   สำรองที่จำกัดสิทธิ์; ส่งสำเนาออกนอกเครื่องด้วย
+C:\apps\medexplore\   source + node_modules + .next + .env.production
+C:\apps\medexplore\service\   MedExploreStar.exe + MedExploreStar.xml
+C:\apps\medexplore\logs\      log ของ Windows Service
+C:\apps\medexplore\backups\   สำรองที่จำกัดสิทธิ์; ส่งสำเนาออกนอกเครื่องด้วย
 C:\inetpub\med-explore-proxy\     web.config เท่านั้น
 ```
 
@@ -57,7 +57,7 @@ C:\inetpub\med-explore-proxy\     web.config เท่านั้น
 ใช้ `.env.production.example` เป็นแนวทางสร้าง `.env.production` ในโฟลเดอร์แอป (คัดลอกเฉพาะเมื่อยังไม่มีไฟล์ ไม่เขียนทับค่าจริง) กำหนด `DATABASE_URL` ของแอปนี้, `NEXTAUTH_URL="https://medexplore.medicine.up.ac.th"`, `PORT=3101` และ `NEXTAUTH_SECRET` แบบสุ่มใหม่ ค่า secret ต้องคงเดิมเมื่อเปลี่ยนรุ่นและไม่ใช้ค่าตัวอย่าง
 
 ```powershell
-Set-Location -LiteralPath 'C:\Apps\MedExploreStar\current'
+Set-Location -LiteralPath 'C:\apps\medexplore'
 if (-not (Test-Path -LiteralPath '.env.production')) { Copy-Item -LiteralPath '.env.production.example' -Destination '.env.production' }
 ```
 
@@ -82,7 +82,7 @@ production ใช้ชื่อ cookie เฉพาะ `__Host-medexplore.*` �
 ไฟล์ CSS ของโปรเจกต์ import ชุด style จาก `shadcn`/Tailwind ในขั้นตอน build จึงต้องใช้ `npm ci --include=dev` แม้ `NODE_ENV` ของเครื่องจะเป็น production อย่าใช้ `--omit=dev` ก่อน build หรือถอน build dependencies ระหว่างกำลัง build
 
 ```powershell
-Set-Location -LiteralPath 'C:\Apps\MedExploreStar\current'
+Set-Location -LiteralPath 'C:\apps\medexplore'
 npm.cmd ci --include=dev
 npm.cmd run prod:check
 npm.cmd run db:deploy:production
@@ -136,7 +136,7 @@ npm.cmd run start:production
 คำสั่งต่อไปนี้ให้ผู้ดูแลรันใน PowerShell แบบ Administrator เมื่อทบทวนไฟล์แล้ว:
 
 ```powershell
-Set-Location -LiteralPath 'C:\Apps\MedExploreStar\service'
+Set-Location -LiteralPath 'C:\apps\medexplore\service'
 .\MedExploreStar.exe install
 ```
 
@@ -165,6 +165,10 @@ Set-Location -LiteralPath 'C:\Apps\MedExploreStar\service'
 
 ## 8. สำรอง อัปเดต และย้อนรุ่น
 
+รุ่นที่เพิ่ม QR ไม่กำหนดเวลาและยกเลิกเพดานดาวสีเหลืองต้องใช้ migration `20261103090000_optional_qr_expiry` เพื่อให้ `qr_sessions.expires_at` เป็น null ได้ สำรองฐานข้อมูลและหยุด process ของแอปนี้ก่อนอัปเดต รัน `npm.cmd run prod:check` และ `npm.cmd run db:deploy:production` ตรวจว่าทั้งคู่สำเร็จ แล้ว build ด้วย `npm.cmd run build:production` ก่อนเริ่มแอปใหม่ หากใช้ PM2 ให้หยุด/เริ่มเฉพาะ `medexplore` ไม่ใช้คำสั่ง `all` และไม่รัน WinSW ซ้ำสำหรับแอปนี้
+
+หลังอัปเดต ทดสอบเลือก “ไม่กำหนดเวลา (รับดาวทันที)” ในหน้ากิจกรรม เช็คอินด้วยบัญชีทดสอบแล้วได้ดาวทันที สแกนซ้ำไม่ได้ดาวเพิ่ม และนิสิตที่มีดาวเหลืองเกิน 12 ดวงยังได้ดาวจากกิจกรรมใหม่ รายการเก่าที่เคยไม่ได้ดาวเพราะเพดานจะไม่ถูกแก้โดย migration หากต้องการประเมินใหม่ให้ใช้ API คำนวณดาวใหม่ของกิจกรรมในปีที่ยังไม่ปิด ตามคู่มือ API
+
 รุ่นที่เตรียม production นี้อัปเดต Next.js เป็น `16.4.3`, Prisma เป็น `7.10.1` และกำหนด override `uuid@11.1.1` เฉพาะใต้ ExcelJS ตาม `package-lock.json` ผลตรวจ ณ การเตรียมรุ่นคือ `npm audit --omit=dev` ไม่พบช่องโหว่ ส่วน audit ทุก dependencies เหลือระดับ low 3 รายการในสายเครื่องมือพัฒนา `shadcn`/`deepmerge` ผล audit เปลี่ยนได้เมื่อฐานข้อมูล advisory อัปเดต จึงตรวจใหม่ก่อน deploy และอย่าใช้ `npm audit fix --force` โดยไม่ทบทวน เพราะอาจเปลี่ยน/ลดรุ่น dependency จน build หรือการทำงานเปลี่ยน
 
 สำรองฐานข้อมูลด้วยเครื่องมือที่เข้ากับ MariaDB/MySQL รุ่นที่ใช้ ตั้งงานอัตโนมัติ และทดลอง restore ลงฐานข้อมูลทดสอบ เก็บ backup นอกโฟลเดอร์ IIS และมีสำเนานอกเครื่อง รหัสผ่านของโปรแกรม backup ให้เก็บในไฟล์ credentials ที่จำกัดสิทธิ์ ไม่ใส่ใน command line รูปรางวัลถูกเก็บในฐานข้อมูล จึงต้องรวมตารางรูปและข้อมูล binary ใน backup ด้วย
@@ -177,7 +181,7 @@ Set-Location -LiteralPath 'C:\Apps\MedExploreStar\service'
 2. อ่าน SQL ของ migrations ที่กำลังจะใช้และประเมินว่ารุ่นก่อนหน้ายังอ่าน schema ใหม่ได้หรือไม่ หากเป็นการลบ/เปลี่ยนข้อมูลให้วางแผน maintenance และ restore ก่อน
 3. สำรองฐานข้อมูล ณ จุดก่อนเปลี่ยน ปิดรับการเขียนตามแผน maintenance และหยุด service รอ process จบ
 4. รัน `prod:check` และ `db:deploy:production` จาก release ใหม่โดยตรวจ exit code ทุกขั้น หากไม่สำเร็จหยุดขั้นตอน ไม่เริ่ม service ด้วย schema ที่ไม่ตรง
-5. เปลี่ยน arguments/workingdirectory ของ service ไป release ใหม่หรือคัดลอก release ที่ตรวจแล้วเข้าโฟลเดอร์ `current` ขณะ service หยุดอยู่ เริ่ม service แล้วทดสอบผ่าน IIS
+5. เปลี่ยน arguments/workingdirectory ของ service ไป release ใหม่หรือคัดลอก release ที่ตรวจแล้วเข้าโฟลเดอร์ `C:\apps\medexplore` ขณะ service หยุดอยู่ โดยเก็บ `.env.production`, `service`, `logs` และ `backups` เดิมไว้ เริ่ม service แล้วทดสอบผ่าน IIS
 6. หากต้องย้อนรุ่น ห้ามเริ่มโค้ดเก่ากับ schema ใหม่โดยเดาว่าเข้ากันได้ ถ้า migration ย้อนเข้ากันได้ให้ใช้ release ก่อนหน้า หากไม่เข้ากันต้องมีแผน restore ฐานข้อมูลที่ยอมรับผลกระทบต่อข้อมูลหลัง backup ห้ามใช้ `migrate reset` เป็น rollback ของ production
 
 ## เอกสารอ้างอิง

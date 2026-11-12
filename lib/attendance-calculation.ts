@@ -1,5 +1,3 @@
-export const YELLOW_STAR_YEAR_LIMIT = 12;
-
 export function calculateAttendedMinutes(checkIn: Date | null, checkOut: Date | null): number | null {
   if (!checkIn || !checkOut) return null;
   const difference = checkOut.getTime() - checkIn.getTime();

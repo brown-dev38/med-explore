@@ -6,13 +6,13 @@ import type { QrSessionDto } from "@/types/activity";
 
 type QrState = { qr: QrSessionDto | null; remaining: number; restoring: boolean; error: string; notice: string };
 const empty: QrState = { qr: null, remaining: 0, restoring: false, error: "", notice: "" };
-const secondsLeft = (qr: QrSessionDto) => Math.max(0, Math.ceil((new Date(qr.expiresAt).getTime() - Date.now()) / 1000));
+const secondsLeft = (qr: QrSessionDto) => qr.expiresAt === null ? 0 : Math.max(0, Math.ceil((new Date(qr.expiresAt).getTime() - Date.now()) / 1000));
 
 function savedQr(value: unknown, activityId: string): value is QrSessionDto {
   if (!value || typeof value !== "object") return false;
   const qr = value as Partial<QrSessionDto>;
   return typeof qr.id === "string" && /^[1-9]\d{0,18}$/.test(qr.id) && qr.activityId === activityId && qr.purpose === "CHECK_IN"
-    && typeof qr.expiresAt === "string" && Number.isFinite(new Date(qr.expiresAt).getTime())
+    && (qr.expiresAt === null || (typeof qr.expiresAt === "string" && Number.isFinite(new Date(qr.expiresAt).getTime())))
     && typeof qr.token === "string" && qr.token.length > 0 && qr.token.length <= 256
     && typeof qr.scanUrl === "string" && typeof qr.qrDataUrl === "string" && qr.qrDataUrl.startsWith("data:image/png;base64,");
 }
@@ -40,7 +40,7 @@ export function useActivityQr(activityId: string) {
       let cached: unknown;
       try { cached = JSON.parse(window.sessionStorage.getItem(key) ?? "null"); }
       catch { cached = null; }
-      if (!savedQr(cached, activityId) || secondsLeft(cached) === 0) {
+      if (!savedQr(cached, activityId) || (cached.expiresAt !== null && secondsLeft(cached) === 0)) {
         try { window.sessionStorage.removeItem(key); } catch { /* Optional browser storage. */ }
         setState({ ...empty, notice: cached ? "QR เดิมหมดอายุหรือไม่สามารถเรียกคืนได้ กรุณาสร้าง QR ใหม่" : "" });
         return;
@@ -58,7 +58,7 @@ export function useActivityQr(activityId: string) {
           return;
         }
         const qr = { ...cached, ...json.data };
-        if (!savedQr(qr, activityId) || qr.id !== cached.id || secondsLeft(qr) === 0) {
+        if (!savedQr(qr, activityId) || qr.id !== cached.id || (qr.expiresAt !== null && secondsLeft(qr) === 0)) {
           window.sessionStorage.removeItem(key);
           setState({ ...empty, notice: "QR เดิมหมดอายุแล้ว กรุณาสร้าง QR ใหม่" });
           return;
@@ -76,7 +76,7 @@ export function useActivityQr(activityId: string) {
 
   const qr = state.qr?.activityId === activityId ? state.qr : null;
   useEffect(() => {
-    if (!qr) return;
+    if (!qr || qr.expiresAt === null) return;
     const timer = window.setInterval(() => {
       const remaining = secondsLeft(qr);
       if (!remaining) {

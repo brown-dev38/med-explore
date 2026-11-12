@@ -163,7 +163,7 @@ export function ActivitiesBrowser({
                     <span>&bull;</span>
                     <span className="flex items-center gap-1">
                       <Clock className="h-3.5 w-3.5" />
-                      รับดาวหลัง QR เช็คอินหมดอายุ
+                      รับดาวตามรูปแบบ QR ที่ผู้จัดกำหนด
                     </span>
                   </div>
 

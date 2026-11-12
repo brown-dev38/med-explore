@@ -106,6 +106,7 @@ export function ActivityDetail({
   const visibleParticipants = filteredParticipants.slice(participantOffset, participantOffset + PARTICIPANTS_PER_PAGE);
   const purpose = "CHECK_IN";
   const [ttl, setTtl] = useState("15");
+  const [noExpiry, setNoExpiry] = useState(false);
   const { qr, setQr, remaining, restoring: restoringQr, error: qrRestoreError, notice: qrNotice, retryRestore } = useActivityQr(activity.id);
   const [busy, setBusy] = useState(false);
 
@@ -212,7 +213,7 @@ export function ActivityDetail({
         body: JSON.stringify({
           activityId: activity.id,
           purpose,
-          ttlMinutes: Number(ttl) || 15,
+          ttlMinutes: noExpiry ? null : Number(ttl) || 15,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -321,7 +322,7 @@ export function ActivityDetail({
         toast.error(json.message ?? "เพิ่มผู้ลงทะเบียนไม่สำเร็จ");
         return;
       }
-      toast.success(`เพิ่มผู้เข้าร่วม ${json.data.added} คน และให้ดาวสีเหลือง ${json.data.awarded} คนแล้ว${json.data.awarded < json.data.added ? " (บางรายได้รับดาวครบเพดานรายปีแล้ว)" : ""}`);
+      toast.success(`เพิ่มผู้เข้าร่วม ${json.data.added} คน และให้ดาวสีเหลือง ${json.data.awarded} คนแล้ว`);
       participantRequest.current = null;
       setSelectedCandidates([]);
       setCandidatesOpen(false);
@@ -497,12 +498,15 @@ export function ActivityDetail({
             </CardTitle>
           </div>
           <CardDescription className="text-xs">
-            สร้างรหัส QR สด เพื่อให้นิสิตสแกนบันทึกเวลาด้วยกล้องในแอป
-            (มีเวลานับถอยหลังตามที่กำหนด)
+            แบบกำหนดเวลาให้ดาวเมื่อ QR หมดอายุ ส่วนแบบไม่กำหนดเวลาให้ดาวทันทีเมื่อเช็คอินสำเร็จ
           </CardDescription>
         </CardHeader>
         <CardContent className="p-6 pt-2">
           <div className="flex flex-wrap items-end gap-3 pb-2">
+            <label htmlFor="qr-no-expiry" className="flex items-center gap-2 pb-2 text-sm">
+              <input id="qr-no-expiry" type="checkbox" checked={noExpiry} onChange={(event) => setNoExpiry(event.target.checked)} disabled={busy} className="size-4 accent-primary" />
+              ไม่กำหนดเวลา (รับดาวทันที)
+            </label>
             <div className="space-y-1.5">
               <Label htmlFor="qr-ttl" className="text-xs">
                 อายุรหัส (นาที)
@@ -511,9 +515,10 @@ export function ActivityDetail({
                 id="qr-ttl"
                 type="number"
                 min={1}
+                max={240}
                 value={ttl}
                 onChange={(e) => setTtl(e.target.value)}
-                disabled={busy}
+                disabled={busy || noExpiry}
                 className="w-28"
               />
             </div>
@@ -535,20 +540,20 @@ export function ActivityDetail({
                     {qr.purpose === "CHECK_IN" ? "เช็คอิน" : "เช็คเอาท์"}
                   </Badge>
                   <span className="text-xs text-muted-foreground">
-                    หมดอายุ: {formatThaiDateTime(qr.expiresAt)}
+                    {qr.expiresAt === null ? "ไม่กำหนดเวลา · เช็คอินแล้วรับดาวทันที" : `หมดอายุ: ${formatThaiDateTime(qr.expiresAt)}`}
                   </span>
                 </div>
 
                 <div className="flex items-center gap-2 font-mono">
                   <span
                     className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-base font-bold ${
-                      remaining <= 10
+                      qr.expiresAt !== null && remaining <= 10
                         ? "bg-destructive/10 text-destructive"
                         : "bg-primary/10 text-primary"
                     }`}
                   >
                     <Clock className="h-4 w-4" />
-                    เหลือเวลา: {formatRemaining(remaining)}
+                    {qr.expiresAt === null ? "ใช้ได้จนกว่าผู้จัดจะปิด QR" : `เหลือเวลา: ${formatRemaining(remaining)}`}
                   </span>
                 </div>
 
@@ -820,7 +825,7 @@ export function ActivityDetail({
           <DialogHeader>
             <DialogTitle>เพิ่มผู้เข้าร่วมกิจกรรม</DialogTitle>
             <DialogDescription>
-              เลือกเฉพาะนิสิตที่ยังไม่ได้ลงทะเบียน ระบบบันทึกเช็คอินและให้ดาวสีเหลืองทันทีตามเพดาน 12 ดาวต่อปี
+              เลือกเฉพาะนิสิตที่ยังไม่ได้ลงทะเบียน ระบบบันทึกเช็คอินและให้ดาวสีเหลืองทันที โดยไม่จำกัดยอดสะสมต่อปี
             </DialogDescription>
           </DialogHeader>
 

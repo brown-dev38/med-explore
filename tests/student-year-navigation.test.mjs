@@ -32,6 +32,7 @@ test("the scan page blocks closed, draft and missing years before mounting the s
   ]) {
     const { default: ScanPage } = loadTypeScript("../app/scan/page.tsx", {
       "next/link": "a", "./scan-client": { ScanClient: "scanner" },
+      "@/components/site-footer": { SiteFooter: "footer" },
       "@/lib/dal": { requireAuth: async () => ({ id: "7" }) },
       "@/lib/student-academic-years": yearContext(records),
     });
@@ -45,6 +46,7 @@ test("the scan page blocks closed, draft and missing years before mounting the s
 test("the scan page uses the explicit active year or defaults to it and rejects invalid year selection", async () => {
   const { default: ScanPage } = loadTypeScript("../app/scan/page.tsx", {
     "next/link": "a", "./scan-client": { ScanClient: "scanner" },
+    "@/components/site-footer": { SiteFooter: "footer" },
     "@/lib/dal": { requireAuth: async () => ({ id: "7" }) },
     "@/lib/student-academic-years": yearContext(),
   });
@@ -90,6 +92,8 @@ test("desktop and mobile dashboard menus and breadcrumbs carry the selected stud
     "next/navigation": { usePathname: () => "/dashboard/my-activities", useSearchParams: () => new URLSearchParams({ academicYearId: "1" }) },
     "@/lib/dashboard-breadcrumbs": loadTypeScript("../lib/dashboard-breadcrumbs.ts"),
     "@/components/logout-button": { LogoutButton: "logout" },
+    "@/components/site-footer": { SiteFooter: "footer" },
+    "@/components/faculty-logo": { FacultyLogo: "faculty-logo" },
     "@/components/ui/button": { Button: "button" },
     "@/components/ui/dialog": Object.fromEntries(["Dialog", "DialogContent", "DialogDescription", "DialogHeader", "DialogTitle"].map((name) => [name, name])),
     "@/components/ui/tooltip": Object.fromEntries(["Tooltip", "TooltipContent", "TooltipProvider", "TooltipTrigger"].map((name) => [name, name])),

@@ -1,6 +1,6 @@
 import "server-only";
 import type { Prisma } from "@prisma/client";
-import { calculateAttendedMinutes, YELLOW_STAR_YEAR_LIMIT } from "@/lib/attendance-calculation";
+import { calculateAttendedMinutes } from "@/lib/attendance-calculation";
 
 export async function lockAttendanceUser(tx: Prisma.TransactionClient, participationId: bigint) {
   const participation = await tx.participation.findUnique({ where: { id: participationId }, select: { userId: true } });
@@ -23,11 +23,12 @@ export async function evaluateAttendance(tx: Prisma.TransactionClient, participa
   let reviewDueAt = participation.reviewDueAt;
   if (checkIn && !reviewDueAt && !manuallyRejected) {
     const session = await tx.qrSession.findFirst({
-      where: { activityId: participation.activityId, purpose: "CHECK_IN", createdAt: { lte: checkIn.occurredAt }, expiresAt: { gt: checkIn.occurredAt },
-        OR: [{ revokedAt: null }, { revokedAt: { gt: checkIn.occurredAt } }] },
+      where: { activityId: participation.activityId, purpose: "CHECK_IN", createdAt: { lte: checkIn.occurredAt },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: checkIn.occurredAt } }],
+        AND: [{ OR: [{ revokedAt: null }, { revokedAt: { gt: checkIn.occurredAt } }] }] },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { expiresAt: true },
     });
-    reviewDueAt = session?.expiresAt ?? participation.activity.endsAt;
+    reviewDueAt = session ? session.expiresAt ?? checkIn.occurredAt : participation.activity.endsAt;
   }
   const checkedIn = Boolean(checkIn && checkIn.occurredAt <= now);
   const due = checkedIn && Boolean(reviewDueAt && reviewDueAt <= now);
@@ -36,7 +37,7 @@ export async function evaluateAttendance(tx: Prisma.TransactionClient, participa
   const eligible = !manuallyRejected && due && student && openActivity;
   const status = checkedIn ? "ATTENDED" : "REGISTERED";
   const eligibilityStatus = manuallyRejected ? "REJECTED" : !checkedIn || !due ? "PENDING" : eligible ? "APPROVED" : "REJECTED";
-  let message = manuallyRejected ? participation.reviewNote ?? "ผู้จัดยกเลิกการให้ดาวสีเหลือง"
+  const message = manuallyRejected ? participation.reviewNote ?? "ผู้จัดยกเลิกการให้ดาวสีเหลือง"
     : !checkedIn ? "รอเช็คอินกิจกรรม"
     : !due ? "เช็คอินแล้ว รอ QR Code หมดอายุเพื่อรับดาวสีเหลืองอัตโนมัติ"
     : !student ? "ดาวสีเหลืองสำหรับผู้เข้าร่วมที่มีบทบาท STUDENT เท่านั้น"
@@ -46,16 +47,7 @@ export async function evaluateAttendance(tx: Prisma.TransactionClient, participa
   const existing = await tx.starTransaction.findUnique({
     where: { participationId_starType: { participationId, starType: "YELLOW" } },
   });
-  let awarded = eligible;
-  if (eligible) {
-    const used = await tx.starTransaction.aggregate({
-      where: { userId: participation.userId, academicYearId: participation.activity.academicYearId,
-        starType: "YELLOW", status: "APPROVED", ...(existing ? { id: { not: existing.id } } : {}) },
-      _sum: { points: true },
-    });
-    awarded = (used._sum.points ?? 0) < YELLOW_STAR_YEAR_LIMIT;
-    if (!awarded) message = `เช็คอินแล้ว แต่ได้รับดาวสีเหลืองครบ ${YELLOW_STAR_YEAR_LIMIT} ดาวในปีการศึกษานี้แล้ว`;
-  }
+  const awarded = eligible;
 
   if (existing || eligible) {
     const starStatus = awarded ? "APPROVED" : "REJECTED";

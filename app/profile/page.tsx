@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { ProfileView } from "@/components/profile-view";
 import { SessionNav } from "@/components/session-nav";
+import { SiteFooter } from "@/components/site-footer";
 
 export const metadata = {
   title: "โปรไฟล์ | MedExplore Star",
@@ -32,6 +33,7 @@ export default function ProfilePage() {
           <ProfileView />
         </Suspense>
       </main>
+      <SiteFooter />
     </div>
   );
 }

@@ -10,7 +10,8 @@ import { scheduleAttendanceReview } from "@/lib/attendance-worker";
 
 async function findQrSession(token: string) {
   return prisma.qrSession.findFirst({
-    where: { tokenHash: hashQrToken(token), purpose: "CHECK_IN", revokedAt: null, expiresAt: { gt: new Date() } },
+    where: { tokenHash: hashQrToken(token), purpose: "CHECK_IN", revokedAt: null,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
     include: { activity: { select: { id: true, title: true, status: true, academicYearId: true, academicYear: { select: { status: true } } } } },
   });
 }
@@ -105,7 +106,7 @@ export async function POST(req: Request) {
     return errorResponse("บันทึกเวลาและดาวไม่สำเร็จ กรุณาลองใหม่", 500);
   }
 
-  scheduleAttendanceReview(session.expiresAt);
+  if (session.expiresAt) scheduleAttendanceReview(session.expiresAt);
   return successResponse(
     { ...toAttendanceDto(result.record), activityId: String(session.activityId), evaluation: result.evaluation },
     201,

@@ -105,7 +105,7 @@ export const activityUpdateSchema = z.object({
 export const qrSessionCreateSchema = z.object({
   activityId: z.string().trim().min(1, "ไม่พบกิจกรรม"),
   purpose: z.literal("CHECK_IN").default("CHECK_IN"),
-  ttlMinutes: z.coerce.number().int().min(1).max(240).optional(),
+  ttlMinutes: z.coerce.number().int().min(1).max(240).nullable().optional(),
 });
 
 export const attendanceScanSchema = z.object({

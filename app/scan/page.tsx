@@ -4,6 +4,7 @@ import Link from "next/link";
 import { getStudentYearContext } from "@/lib/student-academic-years";
 import type { StudentYearPageProps } from "@/lib/student-activity-filters";
 import { ScanClient } from "./scan-client";
+import { SiteFooter } from "@/components/site-footer";
 
 export const metadata = {
   title: "สแกน QR | MedExplore Star",
@@ -11,13 +12,16 @@ export const metadata = {
 
 export default function ScanPage(props: StudentYearPageProps) {
   return (
-    <main className="flex min-h-dvh w-full items-center justify-center bg-background px-4 py-8 sm:p-6">
-      <Suspense
-        fallback={<div className="text-sm text-slate-500">กำลังโหลด...</div>}
-      >
-        <ScanContent {...props} />
-      </Suspense>
-    </main>
+    <div className="flex min-h-dvh flex-col">
+      <main className="flex w-full flex-1 items-center justify-center bg-background px-4 py-8 sm:p-6">
+        <Suspense
+          fallback={<div className="text-sm text-slate-500">กำลังโหลด...</div>}
+        >
+          <ScanContent {...props} />
+        </Suspense>
+      </main>
+      <SiteFooter />
+    </div>
   );
 }
 

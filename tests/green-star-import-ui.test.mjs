@@ -121,5 +121,5 @@ test("participant Excel import uses its activity endpoint and yellow-star confir
   assert.deepEqual(body.studentCodes, ["001234"]);
   assert.equal(body.target.mode, "participants");
   assert.match(text(ui.render()), /ให้ดาวสีเหลือง 0 คนแล้ว/);
-  assert.match(text(ui.render()), /ครบเพดานรายปี/);
+  assert.doesNotMatch(text(ui.render()), /ครบเพดานรายปี/);
 });

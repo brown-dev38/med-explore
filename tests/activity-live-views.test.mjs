@@ -35,6 +35,37 @@ function view(name) {
   return { live, hide: () => hooks.hide(), render: (props) => nodes(hooks.render(() => component(props))) };
 }
 
+test("organizers can choose unlimited immediate-award QRs and switch back to timed QRs", async (context) => {
+  const created = [];
+  let ui;
+  context.after(() => ui?.hide());
+  browser(context, async (url, options) => {
+    if (url !== "/api/qr-sessions") return Response.json({ data: [] });
+    const body = JSON.parse(options.body);
+    created.push(body);
+    return Response.json({ data: { id: String(created.length), activityId: "4", purpose: "CHECK_IN", token: "test-token",
+      scanUrl: "https://example.test/scan?token=test-token", qrDataUrl: "data:image/png;base64,test",
+      expiresAt: body.ttlMinutes === null ? null : new Date(Date.now() + body.ttlMinutes * 60000).toISOString() } });
+  });
+  ui = view("activity-detail");
+  const props = { activity, participants: [] };
+  const render = () => ui.render(props);
+  render(); await setImmediate();
+  assert.equal(render().find((node) => node.props.id === "qr-no-expiry").props.checked, false);
+  render().find((node) => node.props.id === "qr-no-expiry").props.onChange({ target: { checked: true } });
+  assert.equal(render().find((node) => node.props.id === "qr-ttl").props.disabled, true);
+  await render().find((node) => node.type === "Button" && text(node) === "สร้าง QR Code").props.onClick();
+  assert.equal(created[0].ttlMinutes, null);
+  assert.equal(render().find((node) => node.type === "QrDisplay").props.qr.expiresAt, null);
+  assert.match(text(render()), /ใช้ได้จนกว่าผู้จัดจะปิด QR/);
+  assert.doesNotMatch(text(render()), /เหลือเวลา: 00:00/);
+  render().find((node) => node.props.id === "qr-no-expiry").props.onChange({ target: { checked: false } });
+  assert.equal(render().find((node) => node.props.id === "qr-ttl").props.disabled, false);
+  await render().find((node) => node.type === "Button" && text(node) === "สร้าง QR Code").props.onClick();
+  assert.equal(created[1].ttlMinutes, 15);
+  assert.equal(typeof render().find((node) => node.type === "QrDisplay").props.qr.expiresAt, "string");
+});
+
 test("returning to a preserved activity page shows checked-in status after a successful check-in", async (context) => {
   let data = [{ ...activity }];
   const page = browser(context, async (url) => {

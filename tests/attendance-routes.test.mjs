@@ -7,9 +7,10 @@ const validation = loadTypeScript("../lib/validation.ts");
 const api = loadTypeScript("../lib/api.ts");
 const participations = loadTypeScript("../lib/participations.ts", { "server-only": {} });
 
-function routes(principal, { validQr = true, yearStatus = "ACTIVE", yearId = 1n, registered = true } = {}) {
+function routes(principal, { validQr = true, yearStatus = "ACTIVE", yearId = 1n, registered = true, noExpiry = false } = {}) {
   const calls = [];
   const qrReads = [];
+  const scheduled = [];
   const mocks = {
     "@/lib/dal": { getCurrentUser: async () => principal },
     "@/lib/permissions": permissions, "@/lib/validation": validation, "@/lib/api": api,
@@ -17,7 +18,7 @@ function routes(principal, { validQr = true, yearStatus = "ACTIVE", yearId = 1n,
     "@/lib/prisma": { prisma: {
       activity: { findUnique: async () => ({ id: 4n }) },
       qrSession: { findFirst: async (query) => { qrReads.push(query); return validQr ? {
-        activityId: 4n, id: 9n, purpose: "CHECK_IN", expiresAt: new Date(Date.now() + 60000),
+        activityId: 4n, id: 9n, purpose: "CHECK_IN", expiresAt: noExpiry ? null : new Date(Date.now() + 60000),
         activity: { id: 4n, title: "QR activity", status: "PUBLISHED", academicYearId: yearId, academicYear: { status: yearStatus } },
       } : null; } },
       participation: { findUnique: async ({ where }) => { assert.equal(where.activityId_userId.userId, BigInt(principal.id)); return registered ? { id: 7n } : null; } },
@@ -32,7 +33,7 @@ function routes(principal, { validQr = true, yearStatus = "ACTIVE", yearId = 1n,
       attendanceTransaction: async (fn) => fn({}),
       recalculateActivityAttendance: async () => { calls.push("recalculate"); return { participants: 1 }; },
     },
-    "@/lib/attendance-worker": { scheduleAttendanceReview: () => {} },
+    "@/lib/attendance-worker": { scheduleAttendanceReview: (deadline) => scheduled.push(deadline) },
   };
   const request = (body) => new Request("http://localhost/api/attendance", { method: "POST", body: JSON.stringify(body) });
   const context = () => ({ params: Promise.resolve({ id: "4" }) });
@@ -40,7 +41,7 @@ function routes(principal, { validQr = true, yearStatus = "ACTIVE", yearId = 1n,
   const scan = loadTypeScript("../app/api/attendance/scan/route.ts", mocks);
   const bulk = loadTypeScript("../app/api/activities/[id]/attendance/bulk/route.ts", mocks);
   const recalculate = loadTypeScript("../app/api/activities/[id]/attendance/recalculate/route.ts", mocks);
-  return { calls, qrReads,
+  return { calls, qrReads, scheduled,
     preview: (token = "qr-token", yearId) => scan.GET(new Request(`http://localhost/api/attendance/scan?token=${encodeURIComponent(token)}${yearId === undefined ? "" : `&academicYearId=${encodeURIComponent(yearId)}`}`)),
     manual: (body = { participationId: "7", eventType: "CHECK_IN" }) => manual.POST(request(body)),
     scan: (extra = {}) => scan.POST(request({ token: "qr-token", userId: "999", yellowStarPoints: 999, ...extra })),
@@ -105,9 +106,24 @@ test("QR preview is read-only and attendance is written only by the later POST",
   assert.equal(response.headers.get("cache-control"), "private, no-store");
   assert.deepEqual(handlers.calls, []);
   assert.equal(handlers.qrReads[0].where.revokedAt, null);
-  assert.ok(handlers.qrReads[0].where.expiresAt.gt instanceof Date);
+  assert.deepEqual(handlers.qrReads[0].where.OR[0], { expiresAt: null });
+  assert.ok(handlers.qrReads[0].where.OR[1].expiresAt.gt instanceof Date);
   assert.equal((await handlers.scan()).status, 201);
   assert.equal(handlers.calls.length, 1);
+});
+
+test("unlimited QR preview and scan accept the session without scheduling an expiry", async () => {
+  const handlers = routes({ id: "5", roles: ["STUDENT"], permissions: [] }, { noExpiry: true });
+  assert.equal((await handlers.preview()).status, 200);
+  assert.equal((await handlers.scan()).status, 201);
+  assert.equal(handlers.calls.length, 1);
+  assert.deepEqual(handlers.scheduled, []);
+  for (const yearStatus of ["CLOSED", "DRAFT"]) {
+    const blocked = routes({ id: "5" }, { noExpiry: true, yearStatus });
+    assert.equal((await blocked.preview()).status, 409);
+    assert.equal((await blocked.scan()).status, 409);
+    assert.deepEqual(blocked.calls, []);
+  }
 });
 
 test("QR preview rejects guests, missing tokens, expired and revoked sessions without writing attendance", async () => {
